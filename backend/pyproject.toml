@@ -1,0 +1,64 @@
+[project]
+name = "lifegraph"
+version = "1.0.0"
+description = "Personal CRM for long-term relationship memory"
+requires-python = ">=3.11"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "migrations",
+    "staticfiles",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "DJ",     # flake8-django
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "lifegraph"]
+section-order = ["future", "standard-library", "django", "third-party", "first-party", "local-folder"]
+
+[tool.ruff.lint.isort.sections]
+django = ["django", "rest_framework"]
+
+[tool.mypy]
+python_version = "3.11"
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+ignore_missing_imports = true
+strict = false
+warn_unused_ignores = true
+
+[tool.django-stubs]
+django_settings_module = "lifegraph.settings.development"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "lifegraph.settings.development"
+python_files = ["test_*.py", "*_test.py"]
+addopts = [
+    "--strict-markers",
+    "-ra",
+]
+
+[tool.coverage.run]
+source = ["apps"]
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/__pycache__/*",
+]

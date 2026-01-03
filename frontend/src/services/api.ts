@@ -1,0 +1,168 @@
+import axios from 'axios'
+import type {
+  Person,
+  PersonListItem,
+  PaginatedResponse,
+  Tag,
+  Group,
+  RelationshipType,
+  Relationship,
+  Anecdote,
+} from '@/types'
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || '/api/v1',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  withCredentials: true,
+})
+
+// Request interceptor for CSRF
+api.interceptors.request.use((config) => {
+  const csrfToken = document.cookie
+    .split('; ')
+    .find((row) => row.startsWith('csrftoken='))
+    ?.split('=')[1]
+
+  if (csrfToken && config.method !== 'get') {
+    config.headers['X-CSRFToken'] = csrfToken
+  }
+
+  return config
+})
+
+// Persons
+export const getPersons = async (params?: {
+  search?: string
+  tag?: string
+  group?: string
+  page?: number
+}): Promise<PaginatedResponse<PersonListItem>> => {
+  const { data } = await api.get('/persons/', { params })
+  return data
+}
+
+export const getPerson = async (id: string): Promise<Person> => {
+  const { data } = await api.get(`/persons/${id}/`)
+  return data
+}
+
+export const createPerson = async (
+  person: Partial<Person>
+): Promise<Person> => {
+  const { data } = await api.post('/persons/', person)
+  return data
+}
+
+export const updatePerson = async (
+  id: string,
+  person: Partial<Person>
+): Promise<Person> => {
+  const { data } = await api.patch(`/persons/${id}/`, person)
+  return data
+}
+
+export const deletePerson = async (id: string): Promise<void> => {
+  await api.delete(`/persons/${id}/`)
+}
+
+export const getPersonRelationships = async (
+  id: string
+): Promise<Relationship[]> => {
+  const { data } = await api.get(`/persons/${id}/relationships/`)
+  return data
+}
+
+export const getPersonAnecdotes = async (id: string): Promise<Anecdote[]> => {
+  const { data } = await api.get(`/persons/${id}/anecdotes/`)
+  return data
+}
+
+// Tags
+export const getTags = async (): Promise<PaginatedResponse<Tag>> => {
+  const { data } = await api.get('/tags/')
+  return data
+}
+
+export const createTag = async (tag: Partial<Tag>): Promise<Tag> => {
+  const { data } = await api.post('/tags/', tag)
+  return data
+}
+
+// Groups
+export const getGroups = async (): Promise<PaginatedResponse<Group>> => {
+  const { data } = await api.get('/groups/')
+  return data
+}
+
+export const createGroup = async (group: Partial<Group>): Promise<Group> => {
+  const { data } = await api.post('/groups/', group)
+  return data
+}
+
+// Relationship Types
+export const getRelationshipTypes = async (): Promise<
+  PaginatedResponse<RelationshipType>
+> => {
+  const { data } = await api.get('/relationship-types/')
+  return data
+}
+
+// Relationships
+export const createRelationship = async (
+  relationship: Partial<Relationship>
+): Promise<Relationship> => {
+  const { data } = await api.post('/relationships/', relationship)
+  return data
+}
+
+export const deleteRelationship = async (id: string): Promise<void> => {
+  await api.delete(`/relationships/${id}/`)
+}
+
+// Anecdotes
+export const getAnecdotes = async (params?: {
+  person?: string
+  search?: string
+  anecdote_type?: string
+  page?: number
+}): Promise<PaginatedResponse<Anecdote>> => {
+  const { data } = await api.get('/anecdotes/', { params })
+  return data
+}
+
+export const createAnecdote = async (
+  anecdote: Partial<Anecdote> & { person_ids: string[] }
+): Promise<Anecdote> => {
+  const { data } = await api.post('/anecdotes/', anecdote)
+  return data
+}
+
+export const updateAnecdote = async (
+  id: string,
+  anecdote: Partial<Anecdote>
+): Promise<Anecdote> => {
+  const { data } = await api.patch(`/anecdotes/${id}/`, anecdote)
+  return data
+}
+
+export const deleteAnecdote = async (id: string): Promise<void> => {
+  await api.delete(`/anecdotes/${id}/`)
+}
+
+// Search
+export const globalSearch = async (
+  query: string
+): Promise<{ persons: PersonListItem[]; anecdotes: Anecdote[] }> => {
+  const { data } = await api.get('/search/', { params: { q: query } })
+  return data
+}
+
+// Health
+export const healthCheck = async (): Promise<{ status: string }> => {
+  const { data } = await api.get('/health/')
+  return data
+}
+
+export default api

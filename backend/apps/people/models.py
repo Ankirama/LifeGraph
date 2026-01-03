@@ -1,0 +1,273 @@
+"""
+People app models - Person, Relationship, RelationshipType, Anecdote.
+"""
+
+from django.db import models
+
+from apps.core.models import BaseModel, Group, Tag
+
+
+class Person(BaseModel):
+    """
+    Core person model representing a contact in the CRM.
+    """
+
+    # Identity
+    name = models.CharField(max_length=255)
+    nickname = models.CharField(max_length=100, blank=True)
+    avatar = models.ImageField(upload_to="avatars/", blank=True)
+
+    # Dates
+    birthday = models.DateField(null=True, blank=True)
+    met_date = models.DateField(null=True, blank=True)
+    met_context = models.TextField(blank=True, help_text="How/where you met this person")
+
+    # Contact Information (JSON for flexibility)
+    emails = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='List of {"email": "...", "label": "work/personal/..."}',
+    )
+    phones = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='List of {"phone": "...", "label": "mobile/home/..."}',
+    )
+    addresses = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='List of {"address": "...", "label": "home/work/..."}',
+    )
+
+    # Social
+    linkedin_url = models.URLField(blank=True)
+    discord_id = models.CharField(max_length=50, blank=True)
+
+    # Metadata
+    notes = models.TextField(blank=True, help_text="General notes about this person")
+    is_active = models.BooleanField(default=True, help_text="Soft delete flag")
+
+    # AI
+    ai_summary = models.TextField(blank=True, help_text="AI-generated summary")
+    ai_summary_updated = models.DateTimeField(null=True, blank=True)
+
+    # Tracking
+    last_contact = models.DateTimeField(null=True, blank=True)
+
+    # Relations
+    groups = models.ManyToManyField(Group, related_name="persons", blank=True)
+    tags = models.ManyToManyField(Tag, related_name="persons", blank=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "People"
+
+    def __str__(self):
+        if self.nickname:
+            return f"{self.name} ({self.nickname})"
+        return self.name
+
+    @property
+    def primary_email(self) -> str | None:
+        """Return the first email address."""
+        if self.emails and len(self.emails) > 0:
+            return self.emails[0].get("email")
+        return None
+
+    @property
+    def primary_phone(self) -> str | None:
+        """Return the first phone number."""
+        if self.phones and len(self.phones) > 0:
+            return self.phones[0].get("phone")
+        return None
+
+
+class RelationshipType(BaseModel):
+    """
+    Types of relationships (spouse, friend, colleague, etc).
+    """
+
+    class Category(models.TextChoices):
+        FAMILY = "family", "Family"
+        PROFESSIONAL = "professional", "Professional"
+        SOCIAL = "social", "Social"
+        CUSTOM = "custom", "Custom"
+
+    name = models.CharField(max_length=100, unique=True)
+    inverse_name = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Name when viewed from the other person's perspective",
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=Category.choices,
+        default=Category.SOCIAL,
+    )
+    is_symmetric = models.BooleanField(
+        default=False,
+        help_text="True if relationship is the same both ways (e.g., spouse, friend)",
+    )
+    auto_create_inverse = models.BooleanField(
+        default=True,
+        help_text="Automatically create inverse relationship",
+    )
+
+    class Meta:
+        ordering = ["category", "name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        # If symmetric and no inverse name, use the same name
+        if self.is_symmetric and not self.inverse_name:
+            self.inverse_name = self.name
+        super().save(*args, **kwargs)
+
+
+class Relationship(BaseModel):
+    """
+    Relationship between two persons.
+    """
+
+    person_a = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name="relationships_as_a",
+    )
+    person_b = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name="relationships_as_b",
+    )
+    relationship_type = models.ForeignKey(
+        RelationshipType,
+        on_delete=models.PROTECT,
+        related_name="relationships",
+    )
+
+    # Metadata
+    started_date = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    strength = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Relationship strength 1-5",
+    )
+
+    # System
+    auto_created = models.BooleanField(
+        default=False,
+        help_text="True if this was auto-created as inverse",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["person_a", "person_b", "relationship_type"],
+                name="unique_relationship",
+            ),
+            models.CheckConstraint(
+                check=~models.Q(person_a=models.F("person_b")),
+                name="no_self_relationship",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.person_a.name} → {self.relationship_type.name} → {self.person_b.name}"
+
+
+class Anecdote(BaseModel):
+    """
+    Memories, jokes, quotes, and notes about persons.
+    """
+
+    class AnecdoteType(models.TextChoices):
+        MEMORY = "memory", "Memory"
+        JOKE = "joke", "Joke"
+        QUOTE = "quote", "Quote"
+        NOTE = "note", "Note"
+
+    title = models.CharField(max_length=255, blank=True)
+    content = models.TextField(help_text="Rich text / Markdown content")
+    date = models.DateField(null=True, blank=True, help_text="When this happened")
+    location = models.CharField(max_length=255, blank=True)
+
+    # Relations
+    persons = models.ManyToManyField(Person, related_name="anecdotes")
+
+    # Categorization
+    anecdote_type = models.CharField(
+        max_length=20,
+        choices=AnecdoteType.choices,
+        default=AnecdoteType.NOTE,
+    )
+    tags = models.ManyToManyField(Tag, related_name="anecdotes", blank=True)
+
+    class Meta:
+        ordering = ["-date", "-created_at"]
+
+    def __str__(self):
+        if self.title:
+            return self.title
+        return f"{self.anecdote_type} - {self.created_at.strftime('%Y-%m-%d')}"
+
+
+class CustomFieldDefinition(BaseModel):
+    """
+    Definition for custom fields on Person.
+    """
+
+    class FieldType(models.TextChoices):
+        TEXT = "text", "Text"
+        NUMBER = "number", "Number"
+        DATE = "date", "Date"
+        SELECT = "select", "Select"
+        MULTISELECT = "multiselect", "Multi-Select"
+
+    name = models.CharField(max_length=100, unique=True)
+    field_type = models.CharField(max_length=20, choices=FieldType.choices)
+    options = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Options for select/multiselect types",
+    )
+    is_required = models.BooleanField(default=False)
+    order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.field_type})"
+
+
+class CustomFieldValue(BaseModel):
+    """
+    Value of a custom field for a specific person.
+    """
+
+    person = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name="custom_field_values",
+    )
+    definition = models.ForeignKey(
+        CustomFieldDefinition,
+        on_delete=models.CASCADE,
+        related_name="values",
+    )
+    value = models.JSONField(help_text="Flexible storage for any field type")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["person", "definition"],
+                name="unique_custom_field_per_person",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.person.name} - {self.definition.name}"
