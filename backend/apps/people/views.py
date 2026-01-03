@@ -2,8 +2,11 @@
 People app views.
 """
 
+from datetime import date, timedelta
+
 from auditlog.models import LogEntry
 from django.contrib.contenttypes.models import ContentType
+from django.db.models import Count
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.db.models import Q
 from django_filters import rest_framework as filters
@@ -732,3 +735,114 @@ class AIApplyUpdatesView(APIView):
                 "errors_count": len(errors),
             }
         }, status=status.HTTP_200_OK if (updated_persons or created_anecdotes) else status.HTTP_400_BAD_REQUEST)
+
+
+class DashboardView(APIView):
+    """Dashboard statistics and recent activity."""
+
+    def get(self, request):
+        today = date.today()
+
+        # Get counts (exclude owner from person count)
+        total_persons = Person.objects.filter(is_active=True, is_owner=False).count()
+        total_relationships = Relationship.objects.count()
+        total_anecdotes = Anecdote.objects.count()
+        total_photos = Photo.objects.count()
+
+        # Upcoming birthdays (next 30 days)
+        upcoming_birthdays = []
+        persons_with_birthday = Person.objects.filter(
+            is_active=True,
+            is_owner=False,
+            birthday__isnull=False
+        )
+
+        for person in persons_with_birthday:
+            # Calculate this year's birthday
+            try:
+                birthday_this_year = person.birthday.replace(year=today.year)
+            except ValueError:
+                # Handle Feb 29 for non-leap years
+                birthday_this_year = person.birthday.replace(year=today.year, day=28)
+
+            # If birthday already passed this year, check next year
+            if birthday_this_year < today:
+                try:
+                    birthday_this_year = person.birthday.replace(year=today.year + 1)
+                except ValueError:
+                    birthday_this_year = person.birthday.replace(year=today.year + 1, day=28)
+
+            days_until = (birthday_this_year - today).days
+            if 0 <= days_until <= 30:
+                # Calculate age they'll be turning
+                age = birthday_this_year.year - person.birthday.year
+                upcoming_birthdays.append({
+                    "id": str(person.id),
+                    "full_name": person.full_name,
+                    "birthday": person.birthday.isoformat(),
+                    "days_until": days_until,
+                    "turning_age": age,
+                    "date": birthday_this_year.isoformat(),
+                })
+
+        # Sort by days until
+        upcoming_birthdays.sort(key=lambda x: x["days_until"])
+
+        # Recent anecdotes (last 10)
+        recent_anecdotes = []
+        for anecdote in Anecdote.objects.prefetch_related("persons")[:10]:
+            person_names = [p.full_name for p in anecdote.persons.all()[:3]]
+            recent_anecdotes.append({
+                "id": str(anecdote.id),
+                "title": anecdote.title,
+                "content": anecdote.content[:150] + "..." if len(anecdote.content) > 150 else anecdote.content,
+                "anecdote_type": anecdote.anecdote_type,
+                "date": anecdote.date.isoformat() if anecdote.date else None,
+                "persons": person_names,
+                "created_at": anecdote.created_at.isoformat(),
+            })
+
+        # Recently added people (last 10)
+        recent_persons = []
+        owner = Person.objects.filter(is_owner=True).first()
+        for person in Person.objects.filter(is_active=True, is_owner=False).order_by("-created_at")[:10]:
+            # Get relationship to owner (what this person IS to me)
+            relationship_to_me = None
+            if owner:
+                # Look for relationship where this person is related TO the owner
+                rel = Relationship.objects.filter(
+                    person_a=person,
+                    person_b=owner
+                ).select_related("relationship_type").first()
+                if rel:
+                    relationship_to_me = rel.relationship_type.name
+
+            recent_persons.append({
+                "id": str(person.id),
+                "full_name": person.full_name,
+                "relationship_to_me": relationship_to_me,
+                "created_at": person.created_at.isoformat(),
+            })
+
+        # Relationship type distribution
+        relationship_stats = list(
+            Relationship.objects.values("relationship_type__name")
+            .annotate(count=Count("id"))
+            .order_by("-count")[:5]
+        )
+
+        return Response({
+            "stats": {
+                "total_persons": total_persons,
+                "total_relationships": total_relationships,
+                "total_anecdotes": total_anecdotes,
+                "total_photos": total_photos,
+            },
+            "upcoming_birthdays": upcoming_birthdays[:10],
+            "recent_anecdotes": recent_anecdotes,
+            "recent_persons": recent_persons,
+            "relationship_distribution": [
+                {"name": r["relationship_type__name"], "count": r["count"]}
+                for r in relationship_stats
+            ],
+        })

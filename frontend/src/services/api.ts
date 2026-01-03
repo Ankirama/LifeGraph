@@ -281,6 +281,58 @@ export const healthCheck = async (): Promise<{ status: string }> => {
   return data
 }
 
+// Dashboard
+export interface DashboardStats {
+  total_persons: number
+  total_relationships: number
+  total_anecdotes: number
+  total_photos: number
+}
+
+export interface UpcomingBirthday {
+  id: string
+  full_name: string
+  birthday: string
+  days_until: number
+  turning_age: number
+  date: string
+}
+
+export interface RecentAnecdote {
+  id: string
+  title: string
+  content: string
+  anecdote_type: string
+  date: string | null
+  persons: string[]
+  created_at: string
+}
+
+export interface RecentPerson {
+  id: string
+  full_name: string
+  relationship_to_me: string | null
+  created_at: string
+}
+
+export interface RelationshipDistribution {
+  name: string
+  count: number
+}
+
+export interface DashboardResponse {
+  stats: DashboardStats
+  upcoming_birthdays: UpcomingBirthday[]
+  recent_anecdotes: RecentAnecdote[]
+  recent_persons: RecentPerson[]
+  relationship_distribution: RelationshipDistribution[]
+}
+
+export const getDashboard = async (): Promise<DashboardResponse> => {
+  const { data } = await api.get('/dashboard/')
+  return data
+}
+
 // AI Import
 export interface ParsedPerson {
   first_name: string

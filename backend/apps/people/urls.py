@@ -19,6 +19,7 @@ router.register(r"employments", views.EmploymentViewSet)
 urlpatterns = [
     path("", include(router.urls)),
     path("me/", views.MeView.as_view(), name="me"),
+    path("dashboard/", views.DashboardView.as_view(), name="dashboard"),
     path("search/", views.GlobalSearchView.as_view(), name="global-search"),
     path("ai/parse-contacts/", views.AIParseContactsView.as_view(), name="ai-parse-contacts"),
     path("ai/bulk-import/", views.AIBulkImportView.as_view(), name="ai-bulk-import"),
