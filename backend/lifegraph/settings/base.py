@@ -188,7 +188,11 @@ SOCIALACCOUNT_PROVIDERS = {
 }
 
 # Auditlog
-AUDITLOG_INCLUDE_ALL_MODELS = True
+AUDITLOG_INCLUDE_ALL_MODELS = False  # We register models explicitly
+AUDITLOG_INCLUDE_TRACKING_MODELS = (
+    "apps.people",
+    "apps.core",
+)
 
 # OpenAI
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")

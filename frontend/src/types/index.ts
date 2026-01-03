@@ -113,3 +113,60 @@ export interface PaginatedResponse<T> {
   previous: string | null
   results: T[]
 }
+
+export interface LocationCoords {
+  lat: number
+  lng: number
+}
+
+export interface Photo {
+  id: string
+  file: string
+  caption: string
+  date_taken: string | null
+  location: string
+  location_coords: LocationCoords | null
+  ai_description: string
+  detected_faces: unknown[]
+  persons: PersonListItem[]
+  anecdote: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Employment {
+  id: string
+  person: string
+  person_name: string
+  company: string
+  title: string
+  department: string
+  start_date: string | null
+  end_date: string | null
+  is_current: boolean
+  location: string
+  description: string
+  linkedin_synced: boolean
+  linkedin_last_sync: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CustomFieldDefinition {
+  id: string
+  name: string
+  field_type: 'text' | 'number' | 'date' | 'select' | 'multiselect'
+  options: string[]
+  is_required: boolean
+  order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface CustomFieldValue {
+  id: string
+  definition: string
+  field_name: string
+  field_type: string
+  value: unknown
+}

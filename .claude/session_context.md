@@ -1,7 +1,7 @@
 # LifeGraph - Session Context
 
 > Last Updated: 2026-01-03
-> Session: Sprint 1 Implementation
+> Session: Sprint 2 Implementation (in progress)
 
 ## Project Overview
 
@@ -22,8 +22,10 @@
 | Task Queue | Celery + Redis | ✅ Configured |
 | File Storage | MinIO | ✅ Configured |
 | Deployment | Docker Compose | ✅ Ready |
+| Audit Logging | django-auditlog | ✅ Configured |
+| Full-Text Search | PostgreSQL FTS | ✅ Implemented |
 
-## Sprint 1 Progress
+## Sprint 1 Progress (Complete)
 
 | Task | Description | Status |
 |------|-------------|--------|
@@ -36,14 +38,25 @@
 | MODEL-003 | RelationshipType model | ✅ Complete |
 | MODEL-004 | Relationship model | ✅ Complete |
 
-## Project Structure Created
+## Sprint 2 Progress (In Progress)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| SETUP-007 | MinIO bucket initialization | ✅ Complete |
+| SETUP-008 | Audit logging system | ✅ Complete |
+| MODEL-007 | Photo model with metadata | ✅ Complete |
+| MODEL-008 | Employment/Professional model | ✅ Complete |
+| API-008 | Full-text search endpoint | ✅ Complete |
+| API-009 | CustomField value management | ⏳ Pending |
+
+## Project Structure
 
 ```
 personal_crm/
 ├── backend/
 │   ├── apps/
 │   │   ├── core/          # Tags, Groups, shared models
-│   │   └── people/        # Person, Relationship, Anecdote
+│   │   └── people/        # Person, Relationship, Anecdote, Photo, Employment
 │   ├── lifegraph/         # Django project settings
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -53,10 +66,12 @@ personal_crm/
 │   │   ├── components/    # Layout, UI components
 │   │   ├── pages/         # Dashboard, PeopleList, PersonDetail
 │   │   ├── services/      # API client
-│   │   └── types/         # TypeScript types
+│   │   └── types/         # TypeScript types (includes Photo, Employment)
 │   ├── Dockerfile
 │   └── package.json
-├── docker-compose.yml
+├── docker-compose.yml     # Includes MinIO service
+├── scripts/
+│   └── init-minio.sh      # MinIO bucket initialization
 └── .env.example
 ```
 
@@ -67,16 +82,23 @@ personal_crm/
 - **Custom Fields**: Definition + Value models for flexible person attributes
 - **Anecdotes**: Types (memory, joke, quote, note) with person linking
 - **Tags & Groups**: Hierarchical organization with colors
+- **Photo Model**: File storage with metadata, location, AI description support
+- **Employment Model**: Professional history with LinkedIn sync capability
 - **API Endpoints**: Full CRUD for all entities with DRF
+- **Full-Text Search**: PostgreSQL-powered search across persons, anecdotes, employments
+- **Audit Logging**: Complete change tracking via django-auditlog
 - **Frontend Shell**: Dashboard, People list/detail, Layout with sidebar
 
-## Next Steps
+## API Endpoints
 
-1. Run `docker-compose up -d` to start the development environment
-2. Run migrations: `docker-compose exec backend python manage.py migrate`
-3. Seed relationship types: `docker-compose exec backend python manage.py seed_relationship_types`
-4. Access frontend at http://localhost:5173
-5. Access API docs at http://localhost:8000/api/docs/
+- `/api/persons/` - Person CRUD + relationships, anecdotes, photos, employments, history
+- `/api/relationship-types/` - Relationship type management
+- `/api/relationships/` - Relationship CRUD
+- `/api/anecdotes/` - Anecdote CRUD with person linking
+- `/api/photos/` - Photo CRUD with person tagging
+- `/api/employments/` - Employment history CRUD
+- `/api/custom-fields/` - Custom field definition management
+- `/api/search/?q=query` - Global full-text search
 
 ## Commands Reference
 

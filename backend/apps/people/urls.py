@@ -13,7 +13,10 @@ router.register(r"relationship-types", views.RelationshipTypeViewSet)
 router.register(r"relationships", views.RelationshipViewSet)
 router.register(r"anecdotes", views.AnecdoteViewSet)
 router.register(r"custom-fields", views.CustomFieldDefinitionViewSet)
+router.register(r"photos", views.PhotoViewSet)
+router.register(r"employments", views.EmploymentViewSet)
 
 urlpatterns = [
     path("", include(router.urls)),
+    path("search/", views.GlobalSearchView.as_view(), name="global-search"),
 ]

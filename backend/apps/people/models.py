@@ -271,3 +271,94 @@ class CustomFieldValue(BaseModel):
 
     def __str__(self):
         return f"{self.person.name} - {self.definition.name}"
+
+
+class Photo(BaseModel):
+    """
+    Photos associated with persons.
+    """
+
+    file = models.FileField(upload_to="photos/%Y/%m/")
+    caption = models.CharField(max_length=500, blank=True)
+
+    # Metadata
+    date_taken = models.DateTimeField(null=True, blank=True)
+    location = models.CharField(max_length=255, blank=True)
+    location_coords = models.JSONField(
+        null=True,
+        blank=True,
+        help_text='{"lat": float, "lng": float}',
+    )
+
+    # AI
+    ai_description = models.TextField(blank=True, help_text="AI-generated description")
+    detected_faces = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of detected face regions for tagging assistance",
+    )
+
+    # Relations
+    persons = models.ManyToManyField(Person, related_name="photos", blank=True)
+    anecdote = models.ForeignKey(
+        Anecdote,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="photos",
+    )
+
+    class Meta:
+        ordering = ["-date_taken", "-created_at"]
+
+    def __str__(self):
+        if self.caption:
+            return self.caption[:50]
+        return f"Photo {self.id}"
+
+
+class Employment(BaseModel):
+    """
+    Employment/professional history for a person.
+    """
+
+    person = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name="employments",
+    )
+
+    # Job details
+    company = models.CharField(max_length=255)
+    title = models.CharField(max_length=255)
+    department = models.CharField(max_length=255, blank=True)
+
+    # Dates
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    is_current = models.BooleanField(default=False)
+
+    # Additional info
+    location = models.CharField(max_length=255, blank=True)
+    description = models.TextField(blank=True)
+
+    # LinkedIn sync
+    linkedin_synced = models.BooleanField(default=False)
+    linkedin_last_sync = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-is_current", "-start_date"]
+        verbose_name_plural = "Employment history"
+
+    def __str__(self):
+        current = " (current)" if self.is_current else ""
+        return f"{self.person.name} - {self.title} at {self.company}{current}"
+
+    def save(self, *args, **kwargs):
+        # If this is marked as current, unmark other current jobs
+        if self.is_current:
+            Employment.objects.filter(
+                person=self.person,
+                is_current=True,
+            ).exclude(pk=self.pk).update(is_current=False)
+        super().save(*args, **kwargs)

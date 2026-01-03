@@ -10,7 +10,9 @@ from .models import (
     Anecdote,
     CustomFieldDefinition,
     CustomFieldValue,
+    Employment,
     Person,
+    Photo,
     Relationship,
     RelationshipType,
 )
@@ -324,3 +326,94 @@ class CustomFieldDefinitionSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class PhotoSerializer(serializers.ModelSerializer):
+    """Serializer for photos."""
+
+    persons = PersonListSerializer(many=True, read_only=True)
+    person_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        write_only=True,
+        required=False,
+        default=list,
+    )
+
+    class Meta:
+        model = Photo
+        fields = [
+            "id",
+            "file",
+            "caption",
+            "date_taken",
+            "location",
+            "location_coords",
+            "ai_description",
+            "detected_faces",
+            "persons",
+            "person_ids",
+            "anecdote",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "ai_description",
+            "detected_faces",
+            "persons",
+            "created_at",
+            "updated_at",
+        ]
+
+    def create(self, validated_data):
+        person_ids = validated_data.pop("person_ids", [])
+        photo = Photo.objects.create(**validated_data)
+        if person_ids:
+            photo.persons.set(person_ids)
+        return photo
+
+    def update(self, instance, validated_data):
+        person_ids = validated_data.pop("person_ids", None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if person_ids is not None:
+            instance.persons.set(person_ids)
+
+        return instance
+
+
+class EmploymentSerializer(serializers.ModelSerializer):
+    """Serializer for employment history."""
+
+    person_name = serializers.CharField(source="person.name", read_only=True)
+
+    class Meta:
+        model = Employment
+        fields = [
+            "id",
+            "person",
+            "person_name",
+            "company",
+            "title",
+            "department",
+            "start_date",
+            "end_date",
+            "is_current",
+            "location",
+            "description",
+            "linkedin_synced",
+            "linkedin_last_sync",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "person_name",
+            "linkedin_synced",
+            "linkedin_last_sync",
+            "created_at",
+            "updated_at",
+        ]

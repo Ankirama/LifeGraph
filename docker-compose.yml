@@ -49,6 +49,10 @@ services:
       - OAUTH2_CLIENT_SECRET=${OAUTH2_CLIENT_SECRET:-}
       - OAUTH2_SERVER_URL=${OAUTH2_SERVER_URL:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_BUCKET_NAME=lifegraph
     volumes:
       - ./backend:/app
       - backend_static:/app/staticfiles
@@ -59,6 +63,8 @@ services:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     command: >
       sh -c "python manage.py migrate --noinput &&
@@ -105,6 +111,39 @@ services:
         condition: service_healthy
     command: celery -A lifegraph beat -l INFO
 
+  # MinIO Object Storage
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # MinIO bucket initialization
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 $${MINIO_ACCESS_KEY:-minioadmin} $${MINIO_SECRET_KEY:-minioadmin};
+      mc mb --ignore-existing myminio/lifegraph;
+      mc anonymous set none myminio/lifegraph;
+      exit 0;
+      "
+
   # React Frontend
   frontend:
     build:
@@ -125,5 +164,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
   backend_static:
   backend_media:
