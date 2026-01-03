@@ -10,6 +10,7 @@ import {
   FolderTree,
   Settings,
   UserCircle,
+  MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { GlobalSearch } from './GlobalSearch'
@@ -17,6 +18,7 @@ import { getMe } from '@/services/api'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'AI Chat', href: '/chat', icon: MessageSquare },
   { name: 'People', href: '/people', icon: Users },
   { name: 'Relationships', href: '/relationships', icon: Link2 },
   { name: 'Anecdotes', href: '/anecdotes', icon: BookOpen },

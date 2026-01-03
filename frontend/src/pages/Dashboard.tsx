@@ -297,7 +297,7 @@ export function Dashboard() {
 
           {data?.relationship_distribution && data.relationship_distribution.length > 0 ? (
             <div className="space-y-3">
-              {data.relationship_distribution.map((rel, index) => {
+              {data.relationship_distribution.map((rel) => {
                 const maxCount = data.relationship_distribution[0]?.count || 1
                 const percentage = (rel.count / maxCount) * 100
                 return (

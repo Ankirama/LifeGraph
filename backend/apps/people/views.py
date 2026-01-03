@@ -35,7 +35,12 @@ from .serializers import (
     RelationshipSerializer,
     RelationshipTypeSerializer,
 )
-from .services import parse_contacts_text, parse_updates_text
+from .services import (
+    chat_with_context,
+    generate_person_summary,
+    parse_contacts_text,
+    parse_updates_text,
+)
 
 
 class PersonFilter(filters.FilterSet):
@@ -112,12 +117,81 @@ class PersonViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def generate_summary(self, request, pk=None):
         """Generate AI summary for a person."""
-        # TODO: Implement AI summary generation
         person = self.get_object()
-        return Response(
-            {"message": "AI summary generation not yet implemented"},
-            status=status.HTTP_501_NOT_IMPLEMENTED,
-        )
+
+        # Get owner for relationship context
+        owner = Person.objects.filter(is_owner=True).first()
+
+        # Build person data for summary generation
+        profile_data = {
+            "full_name": person.full_name,
+            "nickname": person.nickname,
+            "birthday": person.birthday.isoformat() if person.birthday else None,
+            "notes": person.notes,
+            "met_date": person.met_date.isoformat() if person.met_date else None,
+            "met_context": person.met_context,
+        }
+
+        # Get relationship to owner
+        if owner:
+            rel = Relationship.objects.filter(
+                person_a=person, person_b=owner
+            ).select_related("relationship_type").first()
+            if rel:
+                profile_data["relationship_to_owner"] = rel.relationship_type.name
+
+        # Get relationships with other people
+        relationships_data = []
+        for rel in Relationship.objects.filter(person_a=person).select_related("person_b", "relationship_type")[:10]:
+            if rel.person_b != owner:
+                relationships_data.append({
+                    "type": rel.relationship_type.name,
+                    "person_name": rel.person_b.full_name,
+                })
+
+        # Get anecdotes
+        anecdotes_data = []
+        for anecdote in person.anecdotes.all()[:10]:
+            anecdotes_data.append({
+                "type": anecdote.anecdote_type,
+                "title": anecdote.title,
+                "content": anecdote.content,
+                "date": anecdote.date.isoformat() if anecdote.date else None,
+            })
+
+        # Get employment history
+        employments_data = []
+        for emp in person.employments.all()[:5]:
+            employments_data.append({
+                "company": emp.company,
+                "title": emp.title,
+                "is_current": emp.is_current,
+            })
+
+        person_data = {
+            "profile": profile_data,
+            "relationships": relationships_data,
+            "anecdotes": anecdotes_data,
+            "employments": employments_data,
+        }
+
+        try:
+            summary = generate_person_summary(person_data)
+
+            # Save the summary to the person's ai_summary field
+            person.ai_summary = summary
+            person.save(update_fields=["ai_summary"])
+
+            return Response({
+                "summary": summary,
+                "person_id": str(person.id),
+                "person_name": person.full_name,
+            })
+        except Exception as e:
+            return Response(
+                {"detail": f"Failed to generate summary: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     @action(detail=True, methods=["get"])
     def photos(self, request, pk=None):
@@ -846,3 +920,93 @@ class DashboardView(APIView):
                 for r in relationship_stats
             ],
         })
+
+
+class AIChatView(APIView):
+    """
+    AI-powered chat about contacts.
+
+    POST: Answer questions about the user's contacts using AI.
+    """
+
+    def post(self, request):
+        question = request.data.get("question", "").strip()
+        if not question:
+            return Response(
+                {"detail": "Question is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if len(question) > 2000:
+            return Response(
+                {"detail": "Question too long. Maximum 2,000 characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get conversation history if provided
+        conversation_history = request.data.get("history", [])
+
+        # Build contacts context
+        owner = Person.objects.filter(is_owner=True).first()
+        context_parts = []
+
+        # Add owner info
+        if owner:
+            context_parts.append(f"Owner (You): {owner.full_name}")
+
+        # Add all contacts with their relationships and key info
+        for person in Person.objects.filter(is_active=True, is_owner=False).prefetch_related("anecdotes", "employments")[:100]:
+            person_info = [f"\n### {person.full_name}"]
+
+            # Get relationship to owner
+            if owner:
+                rel = Relationship.objects.filter(
+                    person_a=person, person_b=owner
+                ).select_related("relationship_type").first()
+                if rel:
+                    person_info.append(f"Relationship: {rel.relationship_type.name}")
+
+            if person.birthday:
+                person_info.append(f"Birthday: {person.birthday.isoformat()}")
+
+            if person.nickname:
+                person_info.append(f"Nickname: {person.nickname}")
+
+            if person.notes:
+                person_info.append(f"Notes: {person.notes[:200]}")
+
+            # Current employment
+            current_job = person.employments.filter(is_current=True).first()
+            if current_job:
+                person_info.append(f"Current job: {current_job.title} at {current_job.company}")
+
+            # Recent anecdotes (limit to 3)
+            anecdotes = person.anecdotes.all()[:3]
+            if anecdotes:
+                anecdote_texts = []
+                for a in anecdotes:
+                    anecdote_texts.append(f"- [{a.anecdote_type}] {a.title or ''}: {a.content[:100]}")
+                person_info.append(f"Anecdotes:\n" + "\n".join(anecdote_texts))
+
+            context_parts.append("\n".join(person_info))
+
+        contacts_context = "\n".join(context_parts)
+        today_date = date.today().isoformat()
+
+        try:
+            response = chat_with_context(
+                question=question,
+                contacts_context=contacts_context,
+                today_date=today_date,
+                conversation_history=conversation_history,
+            )
+
+            return Response({
+                "answer": response,
+                "question": question,
+            })
+        except Exception as e:
+            return Response(
+                {"detail": f"Chat failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

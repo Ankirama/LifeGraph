@@ -431,4 +431,37 @@ export const applyUpdates = async (
   return data
 }
 
+// AI Summary
+export interface GenerateSummaryResponse {
+  summary: string
+  person_id: string
+  person_name: string
+}
+
+export const generatePersonSummary = async (
+  personId: string
+): Promise<GenerateSummaryResponse> => {
+  const { data } = await api.post(`/persons/${personId}/generate_summary/`)
+  return data
+}
+
+// AI Chat
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface ChatResponse {
+  answer: string
+  question: string
+}
+
+export const chatWithAI = async (
+  question: string,
+  history?: ChatMessage[]
+): Promise<ChatResponse> => {
+  const { data } = await api.post('/ai/chat/', { question, history })
+  return data
+}
+
 export default api

@@ -9,12 +9,14 @@ import { AnecdotesPage } from '@/pages/AnecdotesPage'
 import { PhotosPage } from '@/pages/PhotosPage'
 import { RelationshipsPage } from '@/pages/RelationshipsPage'
 import { MyProfile } from '@/pages/MyProfile'
+import { ChatPage } from '@/pages/ChatPage'
 
 function App() {
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
+        <Route path="chat" element={<ChatPage />} />
         <Route path="people" element={<PeopleList />} />
         <Route path="people/:id" element={<PersonDetail />} />
         <Route path="relationships" element={<RelationshipsPage />} />

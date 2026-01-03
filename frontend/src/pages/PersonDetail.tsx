@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Edit, Calendar, MapPin, Mail, Phone, Plus, Camera, Briefcase, Pencil, Trash2 } from 'lucide-react'
-import { getPerson, getPersonRelationships, getPersonAnecdotes, getPersonPhotos, getPersonEmployments, deleteRelationship } from '@/services/api'
+import { ArrowLeft, Edit, Calendar, MapPin, Mail, Phone, Plus, Camera, Briefcase, Pencil, Trash2, Sparkles, RefreshCw, Loader2 } from 'lucide-react'
+import { getPerson, getPersonRelationships, getPersonAnecdotes, getPersonPhotos, getPersonEmployments, deleteRelationship, generatePersonSummary } from '@/services/api'
 import { format } from 'date-fns'
 import { Modal } from '@/components/Modal'
 import { PersonForm } from '@/components/PersonForm'
@@ -31,6 +31,13 @@ export function PersonDetail() {
       queryClient.invalidateQueries({ queryKey: ['person', id, 'relationships'] })
       queryClient.invalidateQueries({ queryKey: ['relationships'] })
       queryClient.invalidateQueries({ queryKey: ['persons'] })
+    },
+  })
+
+  const generateSummaryMutation = useMutation({
+    mutationFn: () => generatePersonSummary(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['person', id] })
     },
   })
 
@@ -158,12 +165,48 @@ export function PersonDetail() {
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* AI Summary */}
-          {person.ai_summary && (
-            <div className="bg-card border rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-4">AI Summary</h3>
-              <p className="text-muted-foreground">{person.ai_summary}</p>
+          <div className="bg-card border rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-purple-500" />
+                AI Summary
+              </h3>
+              <button
+                onClick={() => generateSummaryMutation.mutate()}
+                disabled={generateSummaryMutation.isPending}
+                className="inline-flex items-center gap-1 text-sm text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {generateSummaryMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : person.ai_summary ? (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    Regenerate
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    Generate
+                  </>
+                )}
+              </button>
             </div>
-          )}
+            {generateSummaryMutation.isError && (
+              <p className="text-sm text-destructive mb-2">
+                Failed to generate summary. Please try again.
+              </p>
+            )}
+            {person.ai_summary ? (
+              <p className="text-muted-foreground whitespace-pre-wrap">{person.ai_summary}</p>
+            ) : (
+              <p className="text-muted-foreground text-sm italic">
+                No AI summary yet. Click "Generate" to create one based on this person's profile, relationships, and anecdotes.
+              </p>
+            )}
+          </div>
 
           {/* Notes */}
           {person.notes && (

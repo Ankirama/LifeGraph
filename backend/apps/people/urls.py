@@ -25,4 +25,5 @@ urlpatterns = [
     path("ai/bulk-import/", views.AIBulkImportView.as_view(), name="ai-bulk-import"),
     path("ai/parse-updates/", views.AIParseUpdatesView.as_view(), name="ai-parse-updates"),
     path("ai/apply-updates/", views.AIApplyUpdatesView.as_view(), name="ai-apply-updates"),
+    path("ai/chat/", views.AIChatView.as_view(), name="ai-chat"),
 ]

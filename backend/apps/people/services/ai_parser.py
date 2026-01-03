@@ -247,3 +247,178 @@ def parse_updates_text(text: str, existing_contacts: list[dict]) -> dict[str, An
     except Exception as e:
         logger.error(f"OpenAI API error: {e}")
         raise
+
+
+SUMMARY_SYSTEM_PROMPT = """You are an assistant that creates helpful, warm summaries of people in a personal CRM.
+
+Given information about a person (profile, relationships, anecdotes, employment history), create a concise but comprehensive summary that helps the CRM owner remember and understand this person.
+
+The summary should:
+1. Start with who this person is and their relationship to the owner
+2. Include key facts (birthday, occupation, how they met)
+3. Highlight memorable anecdotes or quotes
+4. Note any important relationships to other people in the CRM
+5. Be written in a warm, personal tone (not clinical or robotic)
+6. Be 2-4 paragraphs long
+
+Write in second person ("Your mother...", "You met them...") to make it personal.
+If there's limited information, acknowledge it and focus on what is known.
+Support both French and English - write the summary in the same language as the majority of the input data."""
+
+
+def generate_person_summary(person_data: dict[str, Any]) -> str:
+    """
+    Generate an AI summary for a person based on their profile and related data.
+
+    Args:
+        person_data: Dictionary containing:
+            - profile: Basic person info (name, birthday, notes, etc.)
+            - relationships: List of relationships with other people
+            - anecdotes: List of anecdotes/memories
+            - employments: Employment history
+
+    Returns:
+        Generated summary text
+    """
+    client = get_openai_client()
+
+    # Build context from person data
+    profile = person_data.get("profile", {})
+    relationships = person_data.get("relationships", [])
+    anecdotes = person_data.get("anecdotes", [])
+    employments = person_data.get("employments", [])
+
+    context_parts = []
+
+    # Profile section
+    context_parts.append("## Person Profile")
+    context_parts.append(f"Name: {profile.get('full_name', 'Unknown')}")
+    if profile.get("nickname"):
+        context_parts.append(f"Nickname: {profile['nickname']}")
+    if profile.get("birthday"):
+        context_parts.append(f"Birthday: {profile['birthday']}")
+    if profile.get("relationship_to_owner"):
+        context_parts.append(f"Relationship to you: {profile['relationship_to_owner']}")
+    if profile.get("met_date"):
+        context_parts.append(f"Met on: {profile['met_date']}")
+    if profile.get("met_context"):
+        context_parts.append(f"How you met: {profile['met_context']}")
+    if profile.get("notes"):
+        context_parts.append(f"Notes: {profile['notes']}")
+
+    # Relationships section
+    if relationships:
+        context_parts.append("\n## Relationships")
+        for rel in relationships[:10]:  # Limit to 10
+            context_parts.append(f"- {rel.get('type', 'Related to')}: {rel.get('person_name', 'Unknown')}")
+
+    # Employment section
+    if employments:
+        context_parts.append("\n## Employment History")
+        for emp in employments[:5]:  # Limit to 5
+            current = " (current)" if emp.get("is_current") else ""
+            context_parts.append(f"- {emp.get('title', 'Unknown')} at {emp.get('company', 'Unknown')}{current}")
+
+    # Anecdotes section
+    if anecdotes:
+        context_parts.append("\n## Memories & Anecdotes")
+        for anecdote in anecdotes[:10]:  # Limit to 10
+            anecdote_type = anecdote.get("type", "note")
+            title = anecdote.get("title", "")
+            content = anecdote.get("content", "")[:500]  # Limit content length
+            if title:
+                context_parts.append(f"- [{anecdote_type}] {title}: {content}")
+            else:
+                context_parts.append(f"- [{anecdote_type}] {content}")
+
+    context = "\n".join(context_parts)
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+                {"role": "user", "content": f"Please create a summary for this person:\n\n{context}"},
+            ],
+            temperature=0.7,  # Slightly creative for natural writing
+            max_tokens=1000,
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        logger.error(f"OpenAI API error generating summary: {e}")
+        raise
+
+
+CHAT_SYSTEM_PROMPT = """You are a helpful assistant for a personal CRM called LifeGraph. You help the user remember information about the people in their life.
+
+You have access to the user's contact database. Answer questions about:
+- People's birthdays, relationships, jobs, contact info
+- Memories and anecdotes about people
+- Connections between people
+- Finding people by various criteria
+
+Guidelines:
+1. Be conversational and helpful
+2. If you don't have information, say so clearly
+3. When mentioning people, include their relationship if known (e.g., "your mother Marie")
+4. Support both French and English - respond in the same language as the question
+5. For date-related questions, today's date will be provided
+6. Be concise but complete
+
+The user's contacts database is provided below."""
+
+
+def chat_with_context(
+    question: str,
+    contacts_context: str,
+    today_date: str,
+    conversation_history: list[dict] | None = None
+) -> str:
+    """
+    Answer questions about contacts using AI with database context.
+
+    Args:
+        question: User's question
+        contacts_context: Formatted string with relevant contact information
+        today_date: Today's date in YYYY-MM-DD format
+        conversation_history: Optional list of previous messages
+
+    Returns:
+        AI response to the question
+    """
+    client = get_openai_client()
+
+    system_message = f"""{CHAT_SYSTEM_PROMPT}
+
+Today's date: {today_date}
+
+## Contacts Database:
+{contacts_context}"""
+
+    messages = [{"role": "system", "content": system_message}]
+
+    # Add conversation history if provided
+    if conversation_history:
+        for msg in conversation_history[-10:]:  # Limit to last 10 messages
+            messages.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", "")
+            })
+
+    messages.append({"role": "user", "content": question})
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1000,
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        logger.error(f"OpenAI API error in chat: {e}")
+        raise
