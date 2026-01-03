@@ -9,7 +9,6 @@ from django.db.models import Q
 from django_filters import rest_framework as filters
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -33,12 +32,15 @@ from .serializers import (
     RelationshipSerializer,
     RelationshipTypeSerializer,
 )
+from .services import parse_contacts_text, parse_updates_text
 
 
 class PersonFilter(filters.FilterSet):
     """Filter for Person queryset."""
 
-    name = filters.CharFilter(lookup_expr="icontains")
+    first_name = filters.CharFilter(lookup_expr="icontains")
+    last_name = filters.CharFilter(lookup_expr="icontains")
+    name = filters.CharFilter(method="filter_by_name")
     tag = filters.UUIDFilter(field_name="tags__id")
     group = filters.UUIDFilter(field_name="groups__id")
     has_birthday = filters.BooleanFilter(
@@ -50,18 +52,23 @@ class PersonFilter(filters.FilterSet):
 
     class Meta:
         model = Person
-        fields = ["name", "tag", "group", "has_birthday", "is_active"]
+        fields = ["first_name", "last_name", "name", "tag", "group", "has_birthday", "is_active"]
+
+    def filter_by_name(self, queryset, name, value):
+        """Filter by first_name OR last_name containing the value."""
+        return queryset.filter(
+            Q(first_name__icontains=value) | Q(last_name__icontains=value)
+        )
 
 
 class PersonViewSet(viewsets.ModelViewSet):
     """ViewSet for Person CRUD operations."""
 
-    queryset = Person.objects.prefetch_related("tags", "groups").filter(is_active=True)
-    permission_classes = [IsAuthenticated]
+    queryset = Person.objects.prefetch_related("tags", "groups").filter(is_active=True, is_owner=False)
     filterset_class = PersonFilter
-    search_fields = ["name", "nickname", "notes", "met_context"]
-    ordering_fields = ["name", "birthday", "last_contact", "created_at"]
-    ordering = ["name"]
+    search_fields = ["first_name", "last_name", "nickname", "notes", "met_context"]
+    ordering_fields = ["first_name", "last_name", "birthday", "last_contact", "created_at"]
+    ordering = ["last_name", "first_name"]
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -77,18 +84,18 @@ class PersonViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def relationships(self, request, pk=None):
-        """Get all relationships for a person."""
+        """Get all relationships for a person.
+
+        Only returns relationships where the person is person_a.
+        This avoids duplicates when auto_create_inverse is enabled,
+        as each relationship pair has a canonical direction.
+        """
         person = self.get_object()
-        relationships_as_a = Relationship.objects.filter(
+        relationships = Relationship.objects.filter(
             person_a=person
         ).select_related("person_b", "relationship_type")
-        relationships_as_b = Relationship.objects.filter(
-            person_b=person
-        ).select_related("person_a", "relationship_type")
 
-        # Combine and serialize
-        all_relationships = list(relationships_as_a) + list(relationships_as_b)
-        serializer = RelationshipSerializer(all_relationships, many=True)
+        serializer = RelationshipSerializer(relationships, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=["get"])
@@ -153,7 +160,6 @@ class RelationshipTypeViewSet(viewsets.ModelViewSet):
 
     queryset = RelationshipType.objects.all()
     serializer_class = RelationshipTypeSerializer
-    permission_classes = [IsAuthenticated]
     search_fields = ["name", "inverse_name"]
     filterset_fields = ["category", "is_symmetric"]
     ordering = ["category", "name"]
@@ -168,7 +174,6 @@ class RelationshipViewSet(viewsets.ModelViewSet):
         "relationship_type",
     ).all()
     serializer_class = RelationshipSerializer
-    permission_classes = [IsAuthenticated]
     filterset_fields = ["person_a", "person_b", "relationship_type"]
     ordering = ["-created_at"]
 
@@ -192,7 +197,6 @@ class AnecdoteViewSet(viewsets.ModelViewSet):
 
     queryset = Anecdote.objects.prefetch_related("persons", "tags").all()
     serializer_class = AnecdoteSerializer
-    permission_classes = [IsAuthenticated]
     filterset_class = AnecdoteFilter
     search_fields = ["title", "content", "location"]
     ordering_fields = ["date", "created_at", "anecdote_type"]
@@ -204,7 +208,6 @@ class CustomFieldDefinitionViewSet(viewsets.ModelViewSet):
 
     queryset = CustomFieldDefinition.objects.all()
     serializer_class = CustomFieldDefinitionSerializer
-    permission_classes = [IsAuthenticated]
     ordering = ["order", "name"]
 
 
@@ -237,7 +240,6 @@ class PhotoViewSet(viewsets.ModelViewSet):
 
     queryset = Photo.objects.prefetch_related("persons").select_related("anecdote").all()
     serializer_class = PhotoSerializer
-    permission_classes = [IsAuthenticated]
     filterset_class = PhotoFilter
     search_fields = ["caption", "location", "ai_description"]
     ordering_fields = ["date_taken", "created_at"]
@@ -272,11 +274,78 @@ class EmploymentViewSet(viewsets.ModelViewSet):
 
     queryset = Employment.objects.select_related("person").all()
     serializer_class = EmploymentSerializer
-    permission_classes = [IsAuthenticated]
     filterset_class = EmploymentFilter
     search_fields = ["company", "title", "department", "description"]
     ordering_fields = ["start_date", "end_date", "company", "created_at"]
     ordering = ["-is_current", "-start_date"]
+
+
+class MeView(APIView):
+    """
+    Get or create the CRM owner (you).
+
+    GET: Returns the owner record if it exists, 404 otherwise
+    POST: Creates the owner record (only one allowed)
+    PUT/PATCH: Updates the owner record
+    """
+
+    def get(self, request):
+        try:
+            owner = Person.objects.get(is_owner=True)
+            serializer = PersonDetailSerializer(owner)
+            return Response(serializer.data)
+        except Person.DoesNotExist:
+            return Response(
+                {"detail": "Owner profile not set up yet."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+    def post(self, request):
+        # Check if owner already exists
+        if Person.objects.filter(is_owner=True).exists():
+            return Response(
+                {"detail": "Owner profile already exists. Use PUT to update."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = PersonCreateUpdateSerializer(data=request.data)
+        if serializer.is_valid():
+            person = serializer.save(is_owner=True)
+            return Response(
+                PersonDetailSerializer(person).data,
+                status=status.HTTP_201_CREATED,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request):
+        try:
+            owner = Person.objects.get(is_owner=True)
+        except Person.DoesNotExist:
+            return Response(
+                {"detail": "Owner profile not set up yet. Use POST to create."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = PersonCreateUpdateSerializer(owner, data=request.data)
+        if serializer.is_valid():
+            person = serializer.save()
+            return Response(PersonDetailSerializer(person).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def patch(self, request):
+        try:
+            owner = Person.objects.get(is_owner=True)
+        except Person.DoesNotExist:
+            return Response(
+                {"detail": "Owner profile not set up yet. Use POST to create."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = PersonCreateUpdateSerializer(owner, data=request.data, partial=True)
+        if serializer.is_valid():
+            person = serializer.save()
+            return Response(PersonDetailSerializer(person).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class GlobalSearchView(APIView):
@@ -286,8 +355,6 @@ class GlobalSearchView(APIView):
     Supports searching across Person, Anecdote, and Employment.
     Uses PostgreSQL's full-text search for relevance ranking.
     """
-
-    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         query = request.query_params.get("q", "").strip()
@@ -303,7 +370,9 @@ class GlobalSearchView(APIView):
 
         # Search persons
         person_vector = SearchVector(
-            "name", weight="A"
+            "first_name", weight="A"
+        ) + SearchVector(
+            "last_name", weight="A"
         ) + SearchVector(
             "nickname", weight="A"
         ) + SearchVector(
@@ -318,7 +387,7 @@ class GlobalSearchView(APIView):
                 rank=SearchRank(person_vector, search_query),
             )
             .filter(
-                Q(search=search_query) | Q(name__icontains=query) | Q(nickname__icontains=query),
+                Q(search=search_query) | Q(first_name__icontains=query) | Q(last_name__icontains=query) | Q(nickname__icontains=query),
                 is_active=True,
             )
             .order_by("-rank")[:20]
@@ -380,3 +449,286 @@ class GlobalSearchView(APIView):
             "employments": employment_results,
             "query": query,
         })
+
+
+class AIParseContactsView(APIView):
+    """
+    Parse natural language text into structured contact data using AI.
+
+    POST: Accepts text describing contacts and returns parsed structured data.
+    """
+
+    def post(self, request):
+        text = request.data.get("text", "").strip()
+        if not text:
+            return Response(
+                {"detail": "Text is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if len(text) > 10000:
+            return Response(
+                {"detail": "Text too long. Maximum 10,000 characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = parse_contacts_text(text)
+            return Response(result)
+        except ValueError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"AI parsing failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class AIBulkImportView(APIView):
+    """
+    Bulk import contacts from AI-parsed data.
+
+    POST: Creates persons and relationships from parsed contact data.
+    """
+
+    def post(self, request):
+        persons_data = request.data.get("persons", [])
+        if not persons_data:
+            return Response(
+                {"detail": "No persons data provided."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get the owner for creating relationships
+        try:
+            owner = Person.objects.get(is_owner=True)
+        except Person.DoesNotExist:
+            return Response(
+                {"detail": "Owner profile not set up. Please create your profile first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        created_persons = []
+        created_relationships = []
+        errors = []
+
+        for idx, person_data in enumerate(persons_data):
+            try:
+                # Create the person
+                person = Person.objects.create(
+                    first_name=person_data.get("first_name", ""),
+                    last_name=person_data.get("last_name", ""),
+                    nickname=person_data.get("nickname", ""),
+                    birthday=person_data.get("birthday"),
+                    notes=person_data.get("notes", ""),
+                )
+                created_persons.append(PersonListSerializer(person).data)
+
+                # Create relationship if specified
+                relationship_name = person_data.get("relationship_to_owner", "").strip().lower()
+                if relationship_name:
+                    # Find matching relationship type
+                    relationship_type = RelationshipType.objects.filter(
+                        Q(name__iexact=relationship_name) | Q(inverse_name__iexact=relationship_name)
+                    ).first()
+
+                    if relationship_type:
+                        # Determine the correct direction:
+                        # If the person is "mother" to owner, then:
+                        # - person_a = person (the mother)
+                        # - person_b = owner (me)
+                        # - relationship_type should have name="mother"
+                        if relationship_type.name.lower() == relationship_name:
+                            # Direct match: person is [name] to owner
+                            rel = Relationship.objects.create(
+                                person_a=person,
+                                person_b=owner,
+                                relationship_type=relationship_type,
+                            )
+                        else:
+                            # Inverse match: owner is [name] to person
+                            # So we flip: person_a = owner, person_b = person
+                            rel = Relationship.objects.create(
+                                person_a=owner,
+                                person_b=person,
+                                relationship_type=relationship_type,
+                            )
+                        created_relationships.append(RelationshipSerializer(rel).data)
+                    else:
+                        errors.append(f"Person {idx + 1}: Relationship type '{relationship_name}' not found")
+
+            except Exception as e:
+                errors.append(f"Person {idx + 1}: {str(e)}")
+
+        return Response({
+            "created_persons": created_persons,
+            "created_relationships": created_relationships,
+            "errors": errors,
+            "summary": {
+                "persons_created": len(created_persons),
+                "relationships_created": len(created_relationships),
+                "errors_count": len(errors),
+            }
+        }, status=status.HTTP_201_CREATED if created_persons else status.HTTP_400_BAD_REQUEST)
+
+
+class AIParseUpdatesView(APIView):
+    """
+    Parse natural language text into updates for existing contacts using AI.
+
+    POST: Accepts text describing updates/memories and returns parsed structured data.
+    """
+
+    def post(self, request):
+        text = request.data.get("text", "").strip()
+        if not text:
+            return Response(
+                {"detail": "Text is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if len(text) > 10000:
+            return Response(
+                {"detail": "Text too long. Maximum 10,000 characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get existing contacts with their relationships to owner
+        try:
+            owner = Person.objects.get(is_owner=True)
+        except Person.DoesNotExist:
+            owner = None
+
+        # Build list of existing contacts with relationship info
+        existing_contacts = []
+        for person in Person.objects.filter(is_active=True, is_owner=False):
+            contact_info = {
+                "id": str(person.id),
+                "full_name": person.full_name,
+                "relationship_to_me": None,
+            }
+
+            # Get relationship to owner if owner exists
+            if owner:
+                rel = Relationship.objects.filter(
+                    person_a=person, person_b=owner
+                ).select_related("relationship_type").first()
+                if rel:
+                    contact_info["relationship_to_me"] = rel.relationship_type.name
+
+                if not contact_info["relationship_to_me"]:
+                    rel = Relationship.objects.filter(
+                        person_a=owner, person_b=person
+                    ).select_related("relationship_type").first()
+                    if rel:
+                        contact_info["relationship_to_me"] = rel.relationship_type.inverse_name
+
+            existing_contacts.append(contact_info)
+
+        try:
+            result = parse_updates_text(text, existing_contacts)
+            return Response(result)
+        except ValueError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"AI parsing failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class AIApplyUpdatesView(APIView):
+    """
+    Apply AI-parsed updates to existing contacts.
+
+    POST: Applies field updates and creates anecdotes from parsed data.
+    """
+
+    def post(self, request):
+        updates_data = request.data.get("updates", [])
+        if not updates_data:
+            return Response(
+                {"detail": "No updates data provided."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        updated_persons = []
+        created_anecdotes = []
+        errors = []
+
+        for idx, update in enumerate(updates_data):
+            person_id = update.get("matched_person_id")
+            if not person_id:
+                errors.append(f"Update {idx + 1}: No matched person ID")
+                continue
+
+            try:
+                person = Person.objects.get(id=person_id, is_active=True)
+            except Person.DoesNotExist:
+                errors.append(f"Update {idx + 1}: Person not found")
+                continue
+
+            try:
+                # Apply field updates
+                field_updates = update.get("field_updates", {})
+                fields_changed = []
+
+                if field_updates.get("birthday"):
+                    person.birthday = field_updates["birthday"]
+                    fields_changed.append("birthday")
+
+                if field_updates.get("nickname"):
+                    person.nickname = field_updates["nickname"]
+                    fields_changed.append("nickname")
+
+                if field_updates.get("notes_to_append"):
+                    if person.notes:
+                        person.notes = f"{person.notes}\n\n{field_updates['notes_to_append']}"
+                    else:
+                        person.notes = field_updates["notes_to_append"]
+                    fields_changed.append("notes")
+
+                if fields_changed:
+                    person.save()
+                    updated_persons.append({
+                        "id": str(person.id),
+                        "full_name": person.full_name,
+                        "fields_updated": fields_changed,
+                    })
+
+                # Create anecdotes
+                for anecdote_data in update.get("anecdotes", []):
+                    anecdote = Anecdote.objects.create(
+                        title=anecdote_data.get("title", ""),
+                        content=anecdote_data["content"],
+                        anecdote_type=anecdote_data.get("anecdote_type", "note"),
+                        date=anecdote_data.get("date"),
+                        location=anecdote_data.get("location", ""),
+                    )
+                    anecdote.persons.add(person)
+                    created_anecdotes.append({
+                        "id": str(anecdote.id),
+                        "title": anecdote.title,
+                        "content": anecdote.content[:100] + "..." if len(anecdote.content) > 100 else anecdote.content,
+                        "person_name": person.full_name,
+                    })
+
+            except Exception as e:
+                errors.append(f"Update {idx + 1}: {str(e)}")
+
+        return Response({
+            "updated_persons": updated_persons,
+            "created_anecdotes": created_anecdotes,
+            "errors": errors,
+            "summary": {
+                "persons_updated": len(updated_persons),
+                "anecdotes_created": len(created_anecdotes),
+                "errors_count": len(errors),
+            }
+        }, status=status.HTTP_200_OK if (updated_persons or created_anecdotes) else status.HTTP_400_BAD_REQUEST)

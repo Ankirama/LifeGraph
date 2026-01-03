@@ -29,15 +29,15 @@ class EmploymentInline(admin.TabularInline):
 
 @admin.register(Person)
 class PersonAdmin(admin.ModelAdmin):
-    list_display = ["name", "nickname", "birthday", "is_active", "last_contact", "created_at"]
-    list_filter = ["is_active", "groups", "tags"]
-    search_fields = ["name", "nickname", "notes", "met_context"]
+    list_display = ["full_name", "nickname", "birthday", "is_owner", "is_active", "last_contact", "created_at"]
+    list_filter = ["is_owner", "is_active", "groups", "tags"]
+    search_fields = ["first_name", "last_name", "nickname", "notes", "met_context"]
     filter_horizontal = ["groups", "tags"]
     inlines = [CustomFieldValueInline, EmploymentInline]
     readonly_fields = ["ai_summary", "ai_summary_updated", "created_at", "updated_at"]
     fieldsets = (
         ("Identity", {
-            "fields": ("name", "nickname", "avatar", "is_active")
+            "fields": ("first_name", "last_name", "nickname", "avatar", "is_active")
         }),
         ("Dates", {
             "fields": ("birthday", "met_date", "met_context", "last_contact")
@@ -78,7 +78,7 @@ class RelationshipTypeAdmin(admin.ModelAdmin):
 class RelationshipAdmin(admin.ModelAdmin):
     list_display = ["person_a", "relationship_type", "person_b", "auto_created", "created_at"]
     list_filter = ["relationship_type", "auto_created"]
-    search_fields = ["person_a__name", "person_b__name"]
+    search_fields = ["person_a__first_name", "person_a__last_name", "person_b__first_name", "person_b__last_name"]
     raw_id_fields = ["person_a", "person_b"]
 
 
@@ -101,7 +101,7 @@ class CustomFieldDefinitionAdmin(admin.ModelAdmin):
 class CustomFieldValueAdmin(admin.ModelAdmin):
     list_display = ["person", "definition", "value"]
     list_filter = ["definition"]
-    search_fields = ["person__name"]
+    search_fields = ["person__first_name", "person__last_name"]
     raw_id_fields = ["person"]
 
 
@@ -138,7 +138,7 @@ class PhotoAdmin(admin.ModelAdmin):
 class EmploymentAdmin(admin.ModelAdmin):
     list_display = ["person", "title", "company", "is_current", "start_date", "end_date"]
     list_filter = ["is_current", "linkedin_synced"]
-    search_fields = ["person__name", "company", "title", "department"]
+    search_fields = ["person__first_name", "person__last_name", "company", "title", "department"]
     raw_id_fields = ["person"]
     readonly_fields = ["linkedin_synced", "linkedin_last_sync", "created_at", "updated_at"]
     fieldsets = (

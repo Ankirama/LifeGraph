@@ -2,10 +2,15 @@
 Signals for auto-creating inverse relationships.
 """
 
+import threading
+
 from django.db.models.signals import post_save, pre_delete
 from django.dispatch import receiver
 
 from .models import Relationship, RelationshipType
+
+# Thread-local storage to prevent recursion in delete signals
+_delete_in_progress = threading.local()
 
 
 @receiver(post_save, sender=Relationship)
@@ -56,6 +61,10 @@ def delete_inverse_relationship(sender, instance, **kwargs):
     """
     Delete the inverse relationship when a relationship is deleted.
     """
+    # Prevent recursion: if we're already deleting, don't trigger another delete
+    if getattr(_delete_in_progress, 'active', False):
+        return
+
     relationship_type = instance.relationship_type
 
     if relationship_type.is_symmetric:
@@ -67,9 +76,14 @@ def delete_inverse_relationship(sender, instance, **kwargs):
         if not inverse_type:
             return
 
-    # Delete the inverse
-    Relationship.objects.filter(
-        person_a=instance.person_b,
-        person_b=instance.person_a,
-        relationship_type=inverse_type,
-    ).delete()
+    # Set flag to prevent recursion
+    _delete_in_progress.active = True
+    try:
+        # Delete the inverse
+        Relationship.objects.filter(
+            person_a=instance.person_b,
+            person_b=instance.person_a,
+            relationship_type=inverse_type,
+        ).delete()
+    finally:
+        _delete_in_progress.active = False

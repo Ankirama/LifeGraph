@@ -13,7 +13,8 @@ class Person(BaseModel):
     """
 
     # Identity
-    name = models.CharField(max_length=255)
+    first_name = models.CharField(max_length=150)
+    last_name = models.CharField(max_length=150, blank=True)
     nickname = models.CharField(max_length=100, blank=True)
     avatar = models.ImageField(upload_to="avatars/", blank=True)
 
@@ -46,6 +47,7 @@ class Person(BaseModel):
     # Metadata
     notes = models.TextField(blank=True, help_text="General notes about this person")
     is_active = models.BooleanField(default=True, help_text="Soft delete flag")
+    is_owner = models.BooleanField(default=False, help_text="True if this is the CRM owner (you)")
 
     # AI
     ai_summary = models.TextField(blank=True, help_text="AI-generated summary")
@@ -59,13 +61,21 @@ class Person(BaseModel):
     tags = models.ManyToManyField(Tag, related_name="persons", blank=True)
 
     class Meta:
-        ordering = ["name"]
+        ordering = ["last_name", "first_name"]
         verbose_name_plural = "People"
 
     def __str__(self):
+        full_name = self.full_name
         if self.nickname:
-            return f"{self.name} ({self.nickname})"
-        return self.name
+            return f"{full_name} ({self.nickname})"
+        return full_name
+
+    @property
+    def full_name(self) -> str:
+        """Return the full name (first + last)."""
+        if self.last_name:
+            return f"{self.first_name} {self.last_name}"
+        return self.first_name
 
     @property
     def primary_email(self) -> str | None:
@@ -176,7 +186,7 @@ class Relationship(BaseModel):
         ]
 
     def __str__(self):
-        return f"{self.person_a.name} → {self.relationship_type.name} → {self.person_b.name}"
+        return f"{self.person_a.full_name} → {self.relationship_type.name} → {self.person_b.full_name}"
 
 
 class Anecdote(BaseModel):
@@ -270,7 +280,7 @@ class CustomFieldValue(BaseModel):
         ]
 
     def __str__(self):
-        return f"{self.person.name} - {self.definition.name}"
+        return f"{self.person.full_name} - {self.definition.name}"
 
 
 class Photo(BaseModel):
@@ -352,7 +362,7 @@ class Employment(BaseModel):
 
     def __str__(self):
         current = " (current)" if self.is_current else ""
-        return f"{self.person.name} - {self.title} at {self.company}{current}"
+        return f"{self.person.full_name} - {self.title} at {self.company}{current}"
 
     def save(self, *args, **kwargs):
         # If this is marked as current, unmark other current jobs

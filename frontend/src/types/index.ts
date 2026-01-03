@@ -5,6 +5,7 @@ export interface Tag {
   name: string
   color: string
   description: string
+  person_count?: number
   created_at: string
   updated_at: string
 }
@@ -17,6 +18,7 @@ export interface Group {
   color: string
   full_path: string
   children_count: number
+  person_count?: number
   created_at: string
   updated_at: string
 }
@@ -30,7 +32,9 @@ export interface ContactInfo {
 
 export interface Person {
   id: string
-  name: string
+  first_name: string
+  last_name: string
+  full_name: string
   nickname: string
   avatar: string | null
   birthday: string | null
@@ -43,6 +47,7 @@ export interface Person {
   discord_id: string
   notes: string
   is_active: boolean
+  is_owner: boolean
   ai_summary: string
   ai_summary_updated: string | null
   last_contact: string | null
@@ -56,7 +61,9 @@ export interface Person {
 
 export interface PersonListItem {
   id: string
-  name: string
+  first_name: string
+  last_name: string
+  full_name: string
   nickname: string
   avatar: string | null
   birthday: string | null
@@ -64,6 +71,7 @@ export interface PersonListItem {
   primary_phone: string | null
   tags: Tag[]
   last_contact: string | null
+  relationship_to_me: string | null
   created_at: string
 }
 
@@ -86,6 +94,7 @@ export interface Relationship {
   person_b_name: string
   relationship_type: string
   relationship_type_name: string
+  relationship_type_inverse_name: string
   started_date: string | null
   notes: string
   strength: number | null

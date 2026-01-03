@@ -3,7 +3,7 @@ Core app views.
 """
 
 from rest_framework import status, viewsets
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -16,7 +16,6 @@ class TagViewSet(viewsets.ModelViewSet):
 
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
-    permission_classes = [IsAuthenticated]
     search_fields = ["name", "description"]
     ordering_fields = ["name", "created_at"]
 
@@ -26,7 +25,6 @@ class GroupViewSet(viewsets.ModelViewSet):
 
     queryset = Group.objects.select_related("parent").all()
     serializer_class = GroupSerializer
-    permission_classes = [IsAuthenticated]
     search_fields = ["name", "description"]
     filterset_fields = ["parent"]
     ordering_fields = ["name", "created_at"]
@@ -34,8 +32,6 @@ class GroupViewSet(viewsets.ModelViewSet):
 
 class GlobalSearchView(APIView):
     """Global search across persons and anecdotes."""
-
-    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         query = request.query_params.get("q", "").strip()

@@ -1,4 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard,
   Users,
@@ -6,10 +7,13 @@ import {
   BookOpen,
   Image,
   Tags,
+  FolderTree,
   Settings,
-  Search,
+  UserCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { GlobalSearch } from './GlobalSearch'
+import { getMe } from '@/services/api'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -17,12 +21,21 @@ const navigation = [
   { name: 'Relationships', href: '/relationships', icon: Link2 },
   { name: 'Anecdotes', href: '/anecdotes', icon: BookOpen },
   { name: 'Photos', href: '/photos', icon: Image },
+  { name: 'Groups', href: '/groups', icon: FolderTree },
   { name: 'Tags', href: '/tags', icon: Tags },
+  { name: 'My Profile', href: '/me', icon: UserCircle },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
 export function Layout() {
   const location = useLocation()
+
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: getMe,
+    retry: false,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  })
 
   return (
     <div className="flex h-screen bg-background">
@@ -58,19 +71,20 @@ export function Layout() {
         {/* Header */}
         <header className="h-16 border-b bg-card flex items-center justify-between px-6">
           <div className="flex items-center gap-4 flex-1">
-            <div className="relative max-w-md w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search people, anecdotes..."
-                className="w-full pl-10 pr-4 py-2 rounded-md border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
+            <GlobalSearch />
           </div>
           <div className="flex items-center gap-4">
-            <div className="h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
-              U
-            </div>
+            <Link
+              to="/me"
+              className="flex items-center gap-2 hover:bg-accent rounded-md px-2 py-1 transition-colors"
+            >
+              <div className="h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
+                {me?.first_name?.charAt(0).toUpperCase() || 'U'}
+              </div>
+              {me && (
+                <span className="text-sm font-medium">{me.full_name}</span>
+              )}
+            </Link>
           </div>
         </header>
 

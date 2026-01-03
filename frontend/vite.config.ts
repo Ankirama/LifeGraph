@@ -1,6 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import fs from 'fs'
+
+// Detect if running in Docker (check for .dockerenv file)
+const isDocker = fs.existsSync('/.dockerenv')
+const apiTarget = isDocker ? 'http://backend:8000' : 'http://localhost:8000'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -15,7 +20,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: apiTarget,
         changeOrigin: true,
       },
     },

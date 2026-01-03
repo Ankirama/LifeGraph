@@ -1,11 +1,44 @@
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Edit, Calendar, MapPin, Mail, Phone } from 'lucide-react'
-import { getPerson, getPersonRelationships, getPersonAnecdotes } from '@/services/api'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Edit, Calendar, MapPin, Mail, Phone, Plus, Camera, Briefcase, Pencil, Trash2 } from 'lucide-react'
+import { getPerson, getPersonRelationships, getPersonAnecdotes, getPersonPhotos, getPersonEmployments, deleteRelationship } from '@/services/api'
 import { format } from 'date-fns'
+import { Modal } from '@/components/Modal'
+import { PersonForm } from '@/components/PersonForm'
+import { AddRelationshipModal } from '@/components/AddRelationshipModal'
+import { EditRelationshipModal } from '@/components/EditRelationshipModal'
+import { AddAnecdoteModal } from '@/components/AddAnecdoteModal'
+import { PhotoGallery } from '@/components/PhotoGallery'
+import { PhotoUpload } from '@/components/PhotoUpload'
+import { EmploymentHistory } from '@/components/EmploymentHistory'
+import { AddEmploymentModal } from '@/components/AddEmploymentModal'
+import type { Relationship } from '@/types'
 
 export function PersonDetail() {
   const { id } = useParams<{ id: string }>()
+  const queryClient = useQueryClient()
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isAddRelationshipOpen, setIsAddRelationshipOpen] = useState(false)
+  const [editingRelationship, setEditingRelationship] = useState<Relationship | null>(null)
+  const [isAddAnecdoteOpen, setIsAddAnecdoteOpen] = useState(false)
+  const [isPhotoUploadOpen, setIsPhotoUploadOpen] = useState(false)
+  const [isAddEmploymentOpen, setIsAddEmploymentOpen] = useState(false)
+
+  const deleteRelationshipMutation = useMutation({
+    mutationFn: deleteRelationship,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['person', id, 'relationships'] })
+      queryClient.invalidateQueries({ queryKey: ['relationships'] })
+      queryClient.invalidateQueries({ queryKey: ['persons'] })
+    },
+  })
+
+  const handleDeleteRelationship = (relationshipId: string, otherPersonName: string) => {
+    if (confirm(`Remove relationship with ${otherPersonName}?`)) {
+      deleteRelationshipMutation.mutate(relationshipId)
+    }
+  }
 
   const { data: person, isLoading } = useQuery({
     queryKey: ['person', id],
@@ -22,6 +55,18 @@ export function PersonDetail() {
   const { data: anecdotes } = useQuery({
     queryKey: ['person', id, 'anecdotes'],
     queryFn: () => getPersonAnecdotes(id!),
+    enabled: !!id,
+  })
+
+  const { data: photos } = useQuery({
+    queryKey: ['person', id, 'photos'],
+    queryFn: () => getPersonPhotos(id!),
+    enabled: !!id,
+  })
+
+  const { data: employments } = useQuery({
+    queryKey: ['person', id, 'employments'],
+    queryFn: () => getPersonEmployments(id!),
     enabled: !!id,
   })
 
@@ -46,17 +91,20 @@ export function PersonDetail() {
           </Link>
           <div className="flex items-center gap-4">
             <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center text-primary text-2xl font-semibold">
-              {person.name.charAt(0).toUpperCase()}
+              {person.first_name.charAt(0).toUpperCase()}
             </div>
             <div>
-              <h2 className="text-2xl font-bold">{person.name}</h2>
+              <h2 className="text-2xl font-bold">{person.full_name}</h2>
               {person.nickname && (
                 <p className="text-muted-foreground">"{person.nickname}"</p>
               )}
             </div>
           </div>
         </div>
-        <button className="inline-flex items-center gap-2 border px-4 py-2 rounded-md text-sm font-medium hover:bg-accent">
+        <button
+          onClick={() => setIsEditModalOpen(true)}
+          className="inline-flex items-center gap-2 border px-4 py-2 rounded-md text-sm font-medium hover:bg-accent"
+        >
           <Edit className="h-4 w-4" />
           Edit
         </button>
@@ -127,7 +175,16 @@ export function PersonDetail() {
 
           {/* Anecdotes */}
           <div className="bg-card border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-4">Anecdotes</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Anecdotes</h3>
+              <button
+                onClick={() => setIsAddAnecdoteOpen(true)}
+                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+              >
+                <Plus className="h-4 w-4" />
+                Add
+              </button>
+            </div>
             {anecdotes && anecdotes.length > 0 ? (
               <div className="space-y-4">
                 {anecdotes.map((anecdote) => (
@@ -154,35 +211,97 @@ export function PersonDetail() {
               </p>
             )}
           </div>
+
+          {/* Photos */}
+          <div className="bg-card border rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Photos</h3>
+              <button
+                onClick={() => setIsPhotoUploadOpen(true)}
+                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+              >
+                <Camera className="h-4 w-4" />
+                Upload
+              </button>
+            </div>
+            <PhotoGallery photos={photos || []} personId={id} />
+          </div>
+
+          {/* Employment History */}
+          <div className="bg-card border rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Employment History</h3>
+              <button
+                onClick={() => setIsAddEmploymentOpen(true)}
+                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+              >
+                <Briefcase className="h-4 w-4" />
+                Add
+              </button>
+            </div>
+            <EmploymentHistory employments={employments || []} personId={id!} />
+          </div>
         </div>
 
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Relationships */}
           <div className="bg-card border rounded-lg p-6">
-            <h3 className="text-lg font-semibold mb-4">Relationships</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Relationships</h3>
+              <button
+                onClick={() => setIsAddRelationshipOpen(true)}
+                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+              >
+                <Plus className="h-4 w-4" />
+                Add
+              </button>
+            </div>
             {relationships && relationships.length > 0 ? (
               <div className="space-y-3">
                 {relationships.map((rel) => (
-                  <Link
+                  <div
                     key={rel.id}
-                    to={`/people/${rel.person_a === id ? rel.person_b : rel.person_a}`}
-                    className="flex items-center gap-3 hover:bg-accent p-2 rounded-md transition-colors -mx-2"
+                    className="flex items-center gap-3 p-2 rounded-md -mx-2 group"
                   >
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold">
-                      {(rel.person_a === id ? rel.person_b_name : rel.person_a_name)
-                        .charAt(0)
-                        .toUpperCase()}
+                    <Link
+                      to={`/people/${rel.person_a === id ? rel.person_b : rel.person_a}`}
+                      className="flex items-center gap-3 flex-1 hover:bg-accent rounded-md transition-colors"
+                    >
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold">
+                        {(rel.person_a === id ? rel.person_b_name : rel.person_a_name)
+                          .charAt(0)
+                          .toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">
+                          {rel.person_a === id ? rel.person_b_name : rel.person_a_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground capitalize">
+                          {rel.relationship_type_inverse_name}
+                        </p>
+                      </div>
+                    </Link>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => setEditingRelationship(rel)}
+                        className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground"
+                        title="Edit relationship"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteRelationship(
+                          rel.id,
+                          rel.person_a === id ? rel.person_b_name : rel.person_a_name
+                        )}
+                        className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                        title="Remove relationship"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
-                    <div>
-                      <p className="font-medium text-sm">
-                        {rel.person_a === id ? rel.person_b_name : rel.person_a_name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {rel.relationship_type_name}
-                      </p>
-                    </div>
-                  </Link>
+                  </div>
                 ))}
               </div>
             ) : (
@@ -209,6 +328,62 @@ export function PersonDetail() {
           )}
         </div>
       </div>
+
+      {/* Edit Person Modal */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title="Edit Person"
+        size="xl"
+      >
+        <PersonForm
+          person={person}
+          onSuccess={() => setIsEditModalOpen(false)}
+          onCancel={() => setIsEditModalOpen(false)}
+        />
+      </Modal>
+
+      {/* Add Relationship Modal */}
+      <AddRelationshipModal
+        isOpen={isAddRelationshipOpen}
+        onClose={() => setIsAddRelationshipOpen(false)}
+        personId={id!}
+        personName={person.full_name}
+      />
+
+      {/* Add Anecdote Modal */}
+      <AddAnecdoteModal
+        isOpen={isAddAnecdoteOpen}
+        onClose={() => setIsAddAnecdoteOpen(false)}
+        personId={id!}
+        personName={person.full_name}
+      />
+
+      {/* Photo Upload Modal */}
+      <PhotoUpload
+        isOpen={isPhotoUploadOpen}
+        onClose={() => setIsPhotoUploadOpen(false)}
+        personId={id}
+        personName={person.full_name}
+      />
+
+      {/* Add Employment Modal */}
+      <AddEmploymentModal
+        isOpen={isAddEmploymentOpen}
+        onClose={() => setIsAddEmploymentOpen(false)}
+        personId={id!}
+        personName={person.full_name}
+      />
+
+      {/* Edit Relationship Modal */}
+      {editingRelationship && (
+        <EditRelationshipModal
+          isOpen={!!editingRelationship}
+          onClose={() => setEditingRelationship(null)}
+          relationship={editingRelationship}
+          currentPersonId={id!}
+        />
+      )}
     </div>
   )
 }

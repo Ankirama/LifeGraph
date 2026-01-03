@@ -33,15 +33,19 @@ class CustomFieldValueSerializer(serializers.ModelSerializer):
 class PersonListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for person lists."""
 
+    full_name = serializers.ReadOnlyField()
     primary_email = serializers.ReadOnlyField()
     primary_phone = serializers.ReadOnlyField()
     tags = TagSerializer(many=True, read_only=True)
+    relationship_to_me = serializers.SerializerMethodField()
 
     class Meta:
         model = Person
         fields = [
             "id",
-            "name",
+            "first_name",
+            "last_name",
+            "full_name",
             "nickname",
             "avatar",
             "birthday",
@@ -49,13 +53,50 @@ class PersonListSerializer(serializers.ModelSerializer):
             "primary_phone",
             "tags",
             "last_contact",
+            "relationship_to_me",
             "created_at",
         ]
+
+    def get_relationship_to_me(self, obj):
+        """Get the relationship type name from the perspective of 'Me'."""
+        # Try to get owner from context cache first
+        owner = self.context.get("owner")
+        if owner is None:
+            try:
+                owner = Person.objects.get(is_owner=True)
+                # Cache it in context for subsequent calls
+                if hasattr(self, "_context"):
+                    self._context["owner"] = owner
+            except Person.DoesNotExist:
+                return None
+
+        # Find relationship between this person and the owner
+        # Check both directions
+        relationship = Relationship.objects.filter(
+            person_a=obj, person_b=owner
+        ).select_related("relationship_type").first()
+
+        if relationship:
+            # Person is person_a, owner is person_b
+            # "Person is [type.name] to Owner"
+            return relationship.relationship_type.name
+
+        relationship = Relationship.objects.filter(
+            person_a=owner, person_b=obj
+        ).select_related("relationship_type").first()
+
+        if relationship:
+            # Owner is person_a, person is person_b
+            # "Owner is [type.name] to Person" -> "Person is [inverse_name] to Owner"
+            return relationship.relationship_type.inverse_name
+
+        return None
 
 
 class PersonDetailSerializer(serializers.ModelSerializer):
     """Full serializer for person detail view."""
 
+    full_name = serializers.ReadOnlyField()
     primary_email = serializers.ReadOnlyField()
     primary_phone = serializers.ReadOnlyField()
     tags = TagSerializer(many=True, read_only=True)
@@ -84,7 +125,9 @@ class PersonDetailSerializer(serializers.ModelSerializer):
         model = Person
         fields = [
             "id",
-            "name",
+            "first_name",
+            "last_name",
+            "full_name",
             "nickname",
             "avatar",
             "birthday",
@@ -97,6 +140,7 @@ class PersonDetailSerializer(serializers.ModelSerializer):
             "discord_id",
             "notes",
             "is_active",
+            "is_owner",
             "ai_summary",
             "ai_summary_updated",
             "last_contact",
@@ -112,8 +156,10 @@ class PersonDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "full_name",
             "primary_email",
             "primary_phone",
+            "is_owner",
             "ai_summary",
             "ai_summary_updated",
             "custom_fields",
@@ -142,7 +188,8 @@ class PersonCreateUpdateSerializer(serializers.ModelSerializer):
         model = Person
         fields = [
             "id",
-            "name",
+            "first_name",
+            "last_name",
             "nickname",
             "avatar",
             "birthday",
@@ -206,12 +253,23 @@ class RelationshipTypeSerializer(serializers.ModelSerializer):
 
 
 class RelationshipSerializer(serializers.ModelSerializer):
-    """Serializer for relationships."""
+    """Serializer for relationships.
 
-    person_a_name = serializers.CharField(source="person_a.name", read_only=True)
-    person_b_name = serializers.CharField(source="person_b.name", read_only=True)
+    Note on relationship display:
+    - relationship_type_name: what person_a is to person_b (e.g., "daughter")
+    - relationship_type_inverse_name: what person_b is to person_a (e.g., "parent")
+
+    When displaying on person_a's page, use inverse_name to show what person_b is to them.
+    """
+
+    person_a_name = serializers.CharField(source="person_a.full_name", read_only=True)
+    person_b_name = serializers.CharField(source="person_b.full_name", read_only=True)
     relationship_type_name = serializers.CharField(
         source="relationship_type.name",
+        read_only=True,
+    )
+    relationship_type_inverse_name = serializers.CharField(
+        source="relationship_type.inverse_name",
         read_only=True,
     )
 
@@ -225,6 +283,7 @@ class RelationshipSerializer(serializers.ModelSerializer):
             "person_b_name",
             "relationship_type",
             "relationship_type_name",
+            "relationship_type_inverse_name",
             "started_date",
             "notes",
             "strength",
@@ -237,6 +296,7 @@ class RelationshipSerializer(serializers.ModelSerializer):
             "person_a_name",
             "person_b_name",
             "relationship_type_name",
+            "relationship_type_inverse_name",
             "auto_created",
             "created_at",
             "updated_at",
@@ -388,7 +448,7 @@ class PhotoSerializer(serializers.ModelSerializer):
 class EmploymentSerializer(serializers.ModelSerializer):
     """Serializer for employment history."""
 
-    person_name = serializers.CharField(source="person.name", read_only=True)
+    person_name = serializers.CharField(source="person.full_name", read_only=True)
 
     class Meta:
         model = Employment
