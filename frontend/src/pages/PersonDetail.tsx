@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Edit, Calendar, MapPin, Mail, Phone, Plus, Camera, Briefcase, Pencil, Trash2, Sparkles, RefreshCw, Loader2 } from 'lucide-react'
-import { getPerson, getPersonRelationships, getPersonAnecdotes, getPersonPhotos, getPersonEmployments, deleteRelationship, generatePersonSummary } from '@/services/api'
+import { ArrowLeft, Edit, Calendar, MapPin, Mail, Phone, Plus, Camera, Briefcase, Pencil, Trash2, Sparkles, RefreshCw, Loader2, Tag, Check, X, Linkedin } from 'lucide-react'
+import { getPerson, getPersonRelationships, getPersonAnecdotes, getPersonPhotos, getPersonEmployments, deleteRelationship, generatePersonSummary, suggestTags, applyTags, syncLinkedIn, type SuggestedTag } from '@/services/api'
 import { format } from 'date-fns'
 import { Modal } from '@/components/Modal'
 import { PersonForm } from '@/components/PersonForm'
@@ -24,6 +24,9 @@ export function PersonDetail() {
   const [isAddAnecdoteOpen, setIsAddAnecdoteOpen] = useState(false)
   const [isPhotoUploadOpen, setIsPhotoUploadOpen] = useState(false)
   const [isAddEmploymentOpen, setIsAddEmploymentOpen] = useState(false)
+  const [suggestedTags, setSuggestedTags] = useState<SuggestedTag[]>([])
+  const [selectedTagNames, setSelectedTagNames] = useState<Set<string>>(new Set())
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false)
 
   const deleteRelationshipMutation = useMutation({
     mutationFn: deleteRelationship,
@@ -40,6 +43,51 @@ export function PersonDetail() {
       queryClient.invalidateQueries({ queryKey: ['person', id] })
     },
   })
+
+  const suggestTagsMutation = useMutation({
+    mutationFn: () => suggestTags(id!),
+    onSuccess: (data) => {
+      setSuggestedTags(data.suggested_tags)
+      setSelectedTagNames(new Set(data.suggested_tags.map(t => t.name)))
+      setShowTagSuggestions(true)
+    },
+  })
+
+  const applyTagsMutation = useMutation({
+    mutationFn: (tags: string[]) => applyTags(id!, tags, true),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['person', id] })
+      setShowTagSuggestions(false)
+      setSuggestedTags([])
+      setSelectedTagNames(new Set())
+    },
+  })
+
+  const syncLinkedInMutation = useMutation({
+    mutationFn: () => syncLinkedIn(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['person', id, 'employments'] })
+    },
+  })
+
+  const toggleTagSelection = (tagName: string) => {
+    setSelectedTagNames(prev => {
+      const next = new Set(prev)
+      if (next.has(tagName)) {
+        next.delete(tagName)
+      } else {
+        next.add(tagName)
+      }
+      return next
+    })
+  }
+
+  const handleApplyTags = () => {
+    const tagsToApply = Array.from(selectedTagNames)
+    if (tagsToApply.length > 0) {
+      applyTagsMutation.mutate(tagsToApply)
+    }
+  }
 
   const handleDeleteRelationship = (relationshipId: string, otherPersonName: string) => {
     if (confirm(`Remove relationship with ${otherPersonName}?`)) {
@@ -146,19 +194,118 @@ export function PersonDetail() {
       </div>
 
       {/* Tags */}
-      {person.tags.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {person.tags.map((tag) => (
-            <span
-              key={tag.id}
-              className="px-3 py-1 text-sm rounded-full"
-              style={{ backgroundColor: tag.color + '20', color: tag.color }}
-            >
-              {tag.name}
-            </span>
-          ))}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex flex-wrap gap-2">
+            {person.tags.length > 0 ? (
+              person.tags.map((tag) => (
+                <span
+                  key={tag.id}
+                  className="px-3 py-1 text-sm rounded-full"
+                  style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                >
+                  {tag.name}
+                </span>
+              ))
+            ) : (
+              <span className="text-sm text-muted-foreground">No tags</span>
+            )}
+          </div>
+          <button
+            onClick={() => suggestTagsMutation.mutate()}
+            disabled={suggestTagsMutation.isPending}
+            className="inline-flex items-center gap-1 text-sm text-primary hover:underline disabled:opacity-50"
+          >
+            {suggestTagsMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Suggesting...
+              </>
+            ) : (
+              <>
+                <Tag className="h-4 w-4" />
+                Suggest Tags
+              </>
+            )}
+          </button>
         </div>
-      )}
+
+        {/* Tag Suggestions Panel */}
+        {showTagSuggestions && suggestedTags.length > 0 && (
+          <div className="bg-card border rounded-lg p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-purple-500" />
+                AI Suggested Tags
+              </h4>
+              <button
+                onClick={() => setShowTagSuggestions(false)}
+                className="p-1 hover:bg-accent rounded"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {suggestedTags.map((tag) => (
+                <div
+                  key={tag.name}
+                  className={`flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors ${
+                    selectedTagNames.has(tag.name) ? 'bg-primary/10' : 'hover:bg-accent'
+                  }`}
+                  onClick={() => toggleTagSelection(tag.name)}
+                >
+                  <div className={`w-5 h-5 rounded border flex items-center justify-center ${
+                    selectedTagNames.has(tag.name) ? 'bg-primary border-primary' : 'border-muted-foreground'
+                  }`}>
+                    {selectedTagNames.has(tag.name) && <Check className="h-3 w-3 text-primary-foreground" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{tag.name}</span>
+                      {tag.is_existing && (
+                        <span className="text-xs px-1.5 py-0.5 bg-muted rounded">existing</span>
+                      )}
+                      <span className="text-xs text-muted-foreground">
+                        {Math.round(tag.confidence * 100)}%
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">{tag.reason}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t">
+              <button
+                onClick={() => setShowTagSuggestions(false)}
+                className="px-3 py-1.5 text-sm border rounded-md hover:bg-accent"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyTags}
+                disabled={selectedTagNames.size === 0 || applyTagsMutation.isPending}
+                className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+              >
+                {applyTagsMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+                    Applying...
+                  </>
+                ) : (
+                  `Apply ${selectedTagNames.size} Tag${selectedTagNames.size !== 1 ? 's' : ''}`
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Error message */}
+        {suggestTagsMutation.isError && (
+          <p className="text-sm text-destructive">
+            Failed to suggest tags. Please try again.
+          </p>
+        )}
+      </div>
 
       {/* Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -274,14 +421,46 @@ export function PersonDetail() {
           <div className="bg-card border rounded-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Employment History</h3>
-              <button
-                onClick={() => setIsAddEmploymentOpen(true)}
-                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-              >
-                <Briefcase className="h-4 w-4" />
-                Add
-              </button>
+              <div className="flex items-center gap-3">
+                {person.linkedin_url && (
+                  <button
+                    onClick={() => syncLinkedInMutation.mutate()}
+                    disabled={syncLinkedInMutation.isPending}
+                    className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 hover:underline disabled:opacity-50"
+                    title="Sync from LinkedIn"
+                  >
+                    {syncLinkedInMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Syncing...
+                      </>
+                    ) : (
+                      <>
+                        <Linkedin className="h-4 w-4" />
+                        Sync LinkedIn
+                      </>
+                    )}
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsAddEmploymentOpen(true)}
+                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                >
+                  <Briefcase className="h-4 w-4" />
+                  Add
+                </button>
+              </div>
             </div>
+            {syncLinkedInMutation.isError && (
+              <p className="text-sm text-destructive mb-2">
+                LinkedIn sync failed. Check that credentials are configured.
+              </p>
+            )}
+            {syncLinkedInMutation.isSuccess && syncLinkedInMutation.data && (
+              <p className="text-sm text-green-600 mb-2">
+                Synced {syncLinkedInMutation.data.synced_count} employment records from LinkedIn.
+              </p>
+            )}
             <EmploymentHistory employments={employments || []} personId={id!} />
           </div>
         </div>

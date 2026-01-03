@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Upload, X, Image } from 'lucide-react'
+import { Upload, X, Image, Sparkles } from 'lucide-react'
 import { Modal } from './Modal'
-import { uploadPhoto, getPersons } from '@/services/api'
+import { uploadPhoto, getPersons, generatePhotoDescription } from '@/services/api'
 
 interface PhotoUploadProps {
   isOpen: boolean
@@ -23,6 +23,7 @@ export function PhotoUpload({ isOpen, onClose, personId, personName }: PhotoUplo
     personId ? [personId] : []
   )
   const [searchQuery, setSearchQuery] = useState('')
+  const [autoDescribe, setAutoDescribe] = useState(false)
 
   const { data: persons } = useQuery({
     queryKey: ['persons', { search: searchQuery }],
@@ -30,9 +31,22 @@ export function PhotoUpload({ isOpen, onClose, personId, personName }: PhotoUplo
     enabled: isOpen && !personId,
   })
 
+  const describeMutation = useMutation({
+    mutationFn: generatePhotoDescription,
+  })
+
   const uploadMutation = useMutation({
     mutationFn: uploadPhoto,
-    onSuccess: () => {
+    onSuccess: async (photo) => {
+      // If auto-describe is enabled, generate description after upload
+      if (autoDescribe && photo.id) {
+        try {
+          await describeMutation.mutateAsync(photo.id)
+        } catch (error) {
+          console.error('Failed to auto-describe photo:', error)
+        }
+      }
+
       if (personId) {
         queryClient.invalidateQueries({ queryKey: ['person', personId, 'photos'] })
       }
@@ -49,6 +63,7 @@ export function PhotoUpload({ isOpen, onClose, personId, personName }: PhotoUplo
     setLocation('')
     setSelectedPersonIds(personId ? [personId] : [])
     setSearchQuery('')
+    setAutoDescribe(false)
     onClose()
   }
 
@@ -169,6 +184,25 @@ export function PhotoUpload({ isOpen, onClose, personId, personName }: PhotoUplo
           </div>
         </div>
 
+        {/* AI Auto-describe Option */}
+        <label className="flex items-center gap-3 p-3 rounded-md border hover:bg-accent/50 cursor-pointer transition-colors">
+          <input
+            type="checkbox"
+            checked={autoDescribe}
+            onChange={(e) => setAutoDescribe(e.target.checked)}
+            className="rounded"
+          />
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-purple-500" />
+            <div>
+              <span className="text-sm font-medium">Auto-describe with AI</span>
+              <p className="text-xs text-muted-foreground">
+                Generate an AI description after upload
+              </p>
+            </div>
+          </div>
+        </label>
+
         {/* Person Selection (if not pre-selected) */}
         {!personId && (
           <div>
@@ -259,10 +293,14 @@ export function PhotoUpload({ isOpen, onClose, personId, personName }: PhotoUplo
           </button>
           <button
             type="submit"
-            disabled={uploadMutation.isPending || !file}
+            disabled={uploadMutation.isPending || describeMutation.isPending || !file}
             className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
           >
-            {uploadMutation.isPending ? 'Uploading...' : 'Upload Photo'}
+            {describeMutation.isPending
+              ? 'Describing...'
+              : uploadMutation.isPending
+              ? 'Uploading...'
+              : 'Upload Photo'}
           </button>
         </div>
       </form>

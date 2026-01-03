@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { X, MapPin, Calendar, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
-import { deletePhoto } from '@/services/api'
+import { X, MapPin, Calendar, ChevronLeft, ChevronRight, Trash2, Sparkles, Loader2 } from 'lucide-react'
+import { deletePhoto, generatePhotoDescription } from '@/services/api'
 import { format } from 'date-fns'
 import type { Photo } from '@/types'
 
@@ -22,6 +22,16 @@ export function PhotoGallery({ photos, personId }: PhotoGalleryProps) {
       }
       queryClient.invalidateQueries({ queryKey: ['photos'] })
       setSelectedIndex(null)
+    },
+  })
+
+  const describeMutation = useMutation({
+    mutationFn: generatePhotoDescription,
+    onSuccess: () => {
+      if (personId) {
+        queryClient.invalidateQueries({ queryKey: ['person', personId, 'photos'] })
+      }
+      queryClient.invalidateQueries({ queryKey: ['photos'] })
     },
   })
 
@@ -161,7 +171,24 @@ export function PhotoGallery({ photos, personId }: PhotoGalleryProps) {
               )}
 
               {/* Actions */}
-              <div className="mt-3 pt-3 border-t border-white/20 flex justify-end">
+              <div className="mt-3 pt-3 border-t border-white/20 flex justify-between">
+                <button
+                  onClick={() => describeMutation.mutate(selectedPhoto.id)}
+                  disabled={describeMutation.isPending}
+                  className="flex items-center gap-1 text-purple-400 hover:text-purple-300 text-sm disabled:opacity-50"
+                >
+                  {describeMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Describing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      {selectedPhoto.ai_description ? 'Regenerate Description' : 'AI Describe'}
+                    </>
+                  )}
+                </button>
                 <button
                   onClick={() => {
                     if (confirm('Are you sure you want to delete this photo?')) {

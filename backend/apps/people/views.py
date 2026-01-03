@@ -35,11 +35,15 @@ from .serializers import (
     RelationshipSerializer,
     RelationshipTypeSerializer,
 )
+from apps.core.models import Tag
 from .services import (
     chat_with_context,
     generate_person_summary,
+    generate_photo_description,
     parse_contacts_text,
     parse_updates_text,
+    suggest_tags_for_person,
+    sync_person_from_linkedin,
 )
 
 
@@ -231,6 +235,177 @@ class PersonViewSet(viewsets.ModelViewSet):
 
         return Response(history)
 
+    @action(detail=True, methods=["post"])
+    def suggest_tags(self, request, pk=None):
+        """Suggest AI-generated tags for a person."""
+        person = self.get_object()
+
+        # Get owner for relationship context
+        owner = Person.objects.filter(is_owner=True).first()
+
+        # Build person data for tag suggestion
+        profile_data = {
+            "full_name": person.full_name,
+            "nickname": person.nickname,
+            "birthday": person.birthday.isoformat() if person.birthday else None,
+            "notes": person.notes,
+            "met_date": person.met_date.isoformat() if person.met_date else None,
+            "met_context": person.met_context,
+        }
+
+        # Get relationship to owner
+        if owner:
+            rel = Relationship.objects.filter(
+                person_a=person, person_b=owner
+            ).select_related("relationship_type").first()
+            if rel:
+                profile_data["relationship_to_owner"] = rel.relationship_type.name
+
+        # Get relationships with other people
+        relationships_data = []
+        for rel in Relationship.objects.filter(person_a=person).select_related("person_b", "relationship_type")[:10]:
+            if rel.person_b != owner:
+                relationships_data.append({
+                    "type": rel.relationship_type.name,
+                    "person_name": rel.person_b.full_name,
+                })
+
+        # Get anecdotes
+        anecdotes_data = []
+        for anecdote in person.anecdotes.all()[:10]:
+            anecdotes_data.append({
+                "type": anecdote.anecdote_type,
+                "title": anecdote.title,
+                "content": anecdote.content,
+                "date": anecdote.date.isoformat() if anecdote.date else None,
+            })
+
+        # Get employment history
+        employments_data = []
+        for emp in person.employments.all()[:5]:
+            employments_data.append({
+                "company": emp.company,
+                "title": emp.title,
+                "is_current": emp.is_current,
+            })
+
+        person_data = {
+            "profile": profile_data,
+            "relationships": relationships_data,
+            "anecdotes": anecdotes_data,
+            "employments": employments_data,
+        }
+
+        # Get existing tags
+        existing_tags = list(Tag.objects.values_list("name", flat=True))
+
+        try:
+            suggested_tags = suggest_tags_for_person(person_data, existing_tags)
+
+            return Response({
+                "suggested_tags": suggested_tags,
+                "person_id": str(person.id),
+                "person_name": person.full_name,
+                "current_tags": list(person.tags.values_list("name", flat=True)),
+            })
+        except Exception as e:
+            return Response(
+                {"detail": f"Failed to suggest tags: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["post"])
+    def apply_tags(self, request, pk=None):
+        """Apply suggested tags to a person.
+
+        Request body:
+        {
+            "tags": ["tag-name-1", "tag-name-2"],
+            "create_missing": true  // Whether to create tags that don't exist
+        }
+        """
+        person = self.get_object()
+        tag_names = request.data.get("tags", [])
+        create_missing = request.data.get("create_missing", False)
+
+        if not tag_names:
+            return Response(
+                {"detail": "No tags provided."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        applied_tags = []
+        created_tags = []
+        skipped_tags = []
+
+        for tag_name in tag_names:
+            tag_name = tag_name.lower().strip().replace(" ", "-")
+            tag = Tag.objects.filter(name__iexact=tag_name).first()
+
+            if tag:
+                person.tags.add(tag)
+                applied_tags.append(tag_name)
+            elif create_missing:
+                tag = Tag.objects.create(name=tag_name)
+                person.tags.add(tag)
+                created_tags.append(tag_name)
+                applied_tags.append(tag_name)
+            else:
+                skipped_tags.append(tag_name)
+
+        return Response({
+            "applied_tags": applied_tags,
+            "created_tags": created_tags,
+            "skipped_tags": skipped_tags,
+            "person_id": str(person.id),
+            "person_name": person.full_name,
+            "current_tags": list(person.tags.values_list("name", flat=True)),
+        })
+
+    @action(detail=True, methods=["post"])
+    def sync_linkedin(self, request, pk=None):
+        """Sync employment data from this person's LinkedIn profile.
+
+        WARNING: Uses unofficial LinkedIn API. Use sparingly to avoid rate limits.
+        Requires LINKEDIN_EMAIL and LINKEDIN_PASSWORD environment variables.
+        """
+        person = self.get_object()
+
+        if not person.linkedin_url:
+            return Response(
+                {"detail": "Person has no LinkedIn URL configured."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = sync_person_from_linkedin(person)
+
+            if result.get("errors") and not result.get("synced_count"):
+                return Response(
+                    {"detail": result["errors"][0]},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            return Response({
+                "status": "success",
+                "person_id": str(person.id),
+                "person_name": person.full_name,
+                "synced_count": result.get("synced_count", 0),
+                "skipped_count": result.get("skipped_count", 0),
+                "errors": result.get("errors", []),
+                "profile": result.get("profile", {}),
+            })
+        except ValueError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"LinkedIn sync failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
 
 class RelationshipTypeViewSet(viewsets.ModelViewSet):
     """ViewSet for RelationshipType CRUD operations."""
@@ -324,12 +499,45 @@ class PhotoViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def generate_description(self, request, pk=None):
-        """Generate AI description for a photo."""
+        """Generate AI description for a photo using OpenAI Vision."""
         photo = self.get_object()
-        return Response(
-            {"message": "AI description generation not yet implemented"},
-            status=status.HTTP_501_NOT_IMPLEMENTED,
-        )
+
+        # Build full URL for the image
+        if hasattr(photo.file, 'url'):
+            # Get the full URL including domain
+            image_url = request.build_absolute_uri(photo.file.url)
+        else:
+            return Response(
+                {"detail": "Photo file not available"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get person names for context
+        person_names = list(photo.persons.values_list("first_name", flat=True))
+
+        try:
+            description = generate_photo_description(image_url, person_names or None)
+
+            # Save the description
+            photo.ai_description = description
+            photo.save(update_fields=["ai_description"])
+
+            return Response({
+                "photo_id": str(photo.id),
+                "ai_description": description,
+                "person_context": person_names,
+            })
+
+        except ValueError as e:
+            return Response(
+                {"detail": f"Failed to generate description: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"Failed to generate description: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 class EmploymentFilter(filters.FilterSet):

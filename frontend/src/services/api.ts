@@ -207,6 +207,19 @@ export const deletePhoto = async (id: string): Promise<void> => {
   await api.delete(`/photos/${id}/`)
 }
 
+export interface GeneratePhotoDescriptionResponse {
+  photo_id: string
+  ai_description: string
+  person_context: string[]
+}
+
+export const generatePhotoDescription = async (
+  photoId: string
+): Promise<GeneratePhotoDescriptionResponse> => {
+  const { data } = await api.post(`/photos/${photoId}/generate_description/`)
+  return data
+}
+
 export const getPersonPhotos = async (personId: string): Promise<Photo[]> => {
   const { data } = await api.get(`/persons/${personId}/photos/`)
   return data
@@ -248,6 +261,28 @@ export const deleteEmployment = async (id: string): Promise<void> => {
 
 export const getPersonEmployments = async (personId: string): Promise<Employment[]> => {
   const { data } = await api.get(`/persons/${personId}/employments/`)
+  return data
+}
+
+// LinkedIn Sync
+export interface LinkedInSyncResponse {
+  status: string
+  person_id: string
+  person_name: string
+  synced_count: number
+  skipped_count: number
+  errors: string[]
+  profile: {
+    name: string
+    headline: string
+    experiences_count: number
+  }
+}
+
+export const syncLinkedIn = async (
+  personId: string
+): Promise<LinkedInSyncResponse> => {
+  const { data } = await api.post(`/persons/${personId}/sync_linkedin/`)
   return data
 }
 
@@ -461,6 +496,49 @@ export const chatWithAI = async (
   history?: ChatMessage[]
 ): Promise<ChatResponse> => {
   const { data } = await api.post('/ai/chat/', { question, history })
+  return data
+}
+
+// AI Tag Suggestions
+export interface SuggestedTag {
+  name: string
+  reason: string
+  confidence: number
+  is_existing: boolean
+}
+
+export interface SuggestTagsResponse {
+  suggested_tags: SuggestedTag[]
+  person_id: string
+  person_name: string
+  current_tags: string[]
+}
+
+export interface ApplyTagsResponse {
+  applied_tags: string[]
+  created_tags: string[]
+  skipped_tags: string[]
+  person_id: string
+  person_name: string
+  current_tags: string[]
+}
+
+export const suggestTags = async (
+  personId: string
+): Promise<SuggestTagsResponse> => {
+  const { data } = await api.post(`/persons/${personId}/suggest_tags/`)
+  return data
+}
+
+export const applyTags = async (
+  personId: string,
+  tags: string[],
+  createMissing: boolean = false
+): Promise<ApplyTagsResponse> => {
+  const { data } = await api.post(`/persons/${personId}/apply_tags/`, {
+    tags,
+    create_missing: createMissing,
+  })
   return data
 }
 

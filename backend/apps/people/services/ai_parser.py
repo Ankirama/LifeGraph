@@ -351,6 +351,250 @@ def generate_person_summary(person_data: dict[str, Any]) -> str:
         raise
 
 
+def suggest_tags_for_person(
+    person_data: dict[str, Any],
+    existing_tags: list[str]
+) -> list[dict[str, Any]]:
+    """
+    Suggest relevant tags for a person based on their profile and related data.
+
+    Args:
+        person_data: Dictionary containing:
+            - profile: Basic person info (name, birthday, notes, etc.)
+            - relationships: List of relationships with other people
+            - anecdotes: List of anecdotes/memories
+            - employments: Employment history
+        existing_tags: List of existing tag names in the system
+
+    Returns:
+        List of suggested tags with name, reason, confidence, and is_existing
+    """
+    client = get_openai_client()
+
+    # Build context from person data (similar to summary generation)
+    profile = person_data.get("profile", {})
+    relationships = person_data.get("relationships", [])
+    anecdotes = person_data.get("anecdotes", [])
+    employments = person_data.get("employments", [])
+
+    context_parts = []
+
+    # Existing tags section
+    context_parts.append("## Existing Tags in System")
+    if existing_tags:
+        context_parts.append(", ".join(existing_tags))
+    else:
+        context_parts.append("(No existing tags)")
+
+    # Profile section
+    context_parts.append("\n## Person Profile")
+    context_parts.append(f"Name: {profile.get('full_name', 'Unknown')}")
+    if profile.get("nickname"):
+        context_parts.append(f"Nickname: {profile['nickname']}")
+    if profile.get("birthday"):
+        context_parts.append(f"Birthday: {profile['birthday']}")
+    if profile.get("relationship_to_owner"):
+        context_parts.append(f"Relationship to owner: {profile['relationship_to_owner']}")
+    if profile.get("met_date"):
+        context_parts.append(f"Met on: {profile['met_date']}")
+    if profile.get("met_context"):
+        context_parts.append(f"How they met: {profile['met_context']}")
+    if profile.get("notes"):
+        context_parts.append(f"Notes: {profile['notes']}")
+
+    # Relationships section
+    if relationships:
+        context_parts.append("\n## Relationships")
+        for rel in relationships[:10]:
+            context_parts.append(f"- {rel.get('type', 'Related to')}: {rel.get('person_name', 'Unknown')}")
+
+    # Employment section
+    if employments:
+        context_parts.append("\n## Employment History")
+        for emp in employments[:5]:
+            current = " (current)" if emp.get("is_current") else ""
+            context_parts.append(f"- {emp.get('title', 'Unknown')} at {emp.get('company', 'Unknown')}{current}")
+
+    # Anecdotes section
+    if anecdotes:
+        context_parts.append("\n## Memories & Anecdotes")
+        for anecdote in anecdotes[:10]:
+            anecdote_type = anecdote.get("type", "note")
+            title = anecdote.get("title", "")
+            content = anecdote.get("content", "")[:300]
+            if title:
+                context_parts.append(f"- [{anecdote_type}] {title}: {content}")
+            else:
+                context_parts.append(f"- [{anecdote_type}] {content}")
+
+    context = "\n".join(context_parts)
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": AUTOTAG_SYSTEM_PROMPT},
+                {"role": "user", "content": f"Please suggest tags for this person:\n\n{context}"},
+            ],
+            temperature=0.3,  # Lower temperature for more consistent tagging
+            response_format={"type": "json_object"},
+        )
+
+        content = response.choices[0].message.content
+        result = json.loads(content)
+
+        # Validate and clean the response
+        suggested_tags = []
+        existing_tags_lower = [t.lower() for t in existing_tags]
+
+        for tag in result.get("suggested_tags", []):
+            if not tag.get("name"):
+                continue
+
+            name = tag["name"].lower().strip().replace(" ", "-")
+            confidence = float(tag.get("confidence", 0.5))
+
+            # Skip low confidence tags
+            if confidence < 0.5:
+                continue
+
+            suggested_tags.append({
+                "name": name,
+                "reason": tag.get("reason", ""),
+                "confidence": confidence,
+                "is_existing": name in existing_tags_lower,
+            })
+
+        # Sort by confidence (highest first)
+        suggested_tags.sort(key=lambda x: x["confidence"], reverse=True)
+
+        return suggested_tags[:10]  # Limit to top 10
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse OpenAI response as JSON: {e}")
+        raise ValueError("Failed to parse AI response")
+    except Exception as e:
+        logger.error(f"OpenAI API error suggesting tags: {e}")
+        raise
+
+
+AUTOTAG_SYSTEM_PROMPT = """You are an assistant that suggests relevant tags for people in a personal CRM.
+
+Given information about a person (profile, relationships, anecdotes, employment), suggest appropriate tags that help categorize and find this person.
+
+You will be given:
+1. Existing tags in the system - prefer using these when appropriate
+2. Person's data to analyze
+
+Return a JSON object with:
+{
+  "suggested_tags": [
+    {
+      "name": "tag name (lowercase, no spaces - use hyphens)",
+      "reason": "brief reason why this tag applies",
+      "confidence": 0.0 to 1.0 (how confident you are this tag applies),
+      "is_existing": true/false (whether this tag already exists in the system)
+    }
+  ]
+}
+
+Tag categories to consider:
+- Profession/Industry: developer, designer, manager, entrepreneur, doctor, teacher, etc.
+- Relationship context: work-friend, childhood-friend, family, neighbor, etc.
+- Interests/Hobbies: music, sports, cooking, travel, gaming, etc.
+- Location: paris, remote, expatriate, etc.
+- Life stage: parent, student, retired, etc.
+- Personality traits: creative, analytical, outgoing, etc.
+- How you met: conference, online, mutual-friend, etc.
+
+Rules:
+1. Suggest 3-10 tags, ordered by confidence (highest first)
+2. Prefer existing tags when they fit
+3. Only suggest new tags if no existing tag is appropriate
+4. Tag names should be lowercase with hyphens (e.g., "software-developer")
+5. Be conservative - only suggest tags with reasonable confidence (>0.5)
+6. Consider ALL available data: profile, relationships, anecdotes, employment
+
+Respond ONLY with valid JSON, no other text."""
+
+
+PHOTO_DESCRIPTION_SYSTEM_PROMPT = """You are an assistant that describes photos in a personal CRM context.
+
+Your task is to describe what you see in the photo, focusing on:
+1. People visible (describe them without naming - the user will tag who they are)
+2. The setting/location (indoor, outdoor, restaurant, beach, office, etc.)
+3. The activity or occasion (celebration, casual gathering, work event, vacation, etc.)
+4. Notable details (decorations, landmarks, weather, mood)
+5. Approximate time context if visible (season, time of day)
+
+Guidelines:
+- Be descriptive but concise (2-4 sentences)
+- Focus on what's helpful for remembering this moment
+- Don't assume identities - describe appearances instead
+- Support both French and English - match the language of any visible text, or default to English
+- If the image quality is poor or unclear, mention it briefly
+
+Example outputs:
+- "Two people are embracing at what appears to be a birthday celebration. There's a cake with candles on a table, and colorful balloons in the background. The setting is indoors, possibly a home dining room."
+- "A group of four people posing in front of a mountain landscape. They're wearing hiking gear and look to be at a summit or viewpoint. Clear sunny weather with snow-capped peaks visible in the distance."
+"""
+
+
+def generate_photo_description(image_url: str, person_context: list[str] | None = None) -> str:
+    """
+    Generate an AI description for a photo using OpenAI Vision.
+
+    Args:
+        image_url: URL or base64 data URL of the image
+        person_context: Optional list of person names associated with this photo for context
+
+    Returns:
+        Generated description text
+    """
+    client = get_openai_client()
+
+    user_message_parts = []
+
+    # Add person context if available
+    if person_context:
+        context = ", ".join(person_context)
+        user_message_parts.append({
+            "type": "text",
+            "text": f"This photo is tagged with the following people: {context}. Please describe what you see in the photo."
+        })
+    else:
+        user_message_parts.append({
+            "type": "text",
+            "text": "Please describe what you see in this photo."
+        })
+
+    # Add the image
+    user_message_parts.append({
+        "type": "image_url",
+        "image_url": {
+            "url": image_url,
+            "detail": "auto"  # Let OpenAI decide resolution
+        }
+    })
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": PHOTO_DESCRIPTION_SYSTEM_PROMPT},
+                {"role": "user", "content": user_message_parts}
+            ],
+            max_tokens=500,
+            temperature=0.5,
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        logger.error(f"OpenAI Vision API error generating photo description: {e}")
+        raise
+
+
 CHAT_SYSTEM_PROMPT = """You are a helpful assistant for a personal CRM called LifeGraph. You help the user remember information about the people in their life.
 
 You have access to the user's contact database. Answer questions about:

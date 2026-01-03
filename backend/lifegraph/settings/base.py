@@ -196,3 +196,8 @@ AUDITLOG_INCLUDE_TRACKING_MODELS = (
 
 # OpenAI
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+
+# LinkedIn Integration
+# WARNING: Uses unofficial API. Use sparingly to avoid account restrictions.
+LINKEDIN_EMAIL = env("LINKEDIN_EMAIL", default="")
+LINKEDIN_PASSWORD = env("LINKEDIN_PASSWORD", default="")
