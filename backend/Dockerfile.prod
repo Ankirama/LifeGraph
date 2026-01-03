@@ -1,0 +1,44 @@
+# Production Dockerfile for LifeGraph Backend
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Create non-root user for security
+RUN groupadd --gid 1000 appgroup && \
+    useradd --uid 1000 --gid appgroup --shell /bin/bash --create-home appuser
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set work directory
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY --chown=appuser:appgroup . .
+
+# Collect static files (with dummy secret key for build)
+RUN SECRET_KEY=build-secret-key python manage.py collectstatic --noinput --settings=lifegraph.settings.production || true
+
+# Switch to non-root user
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/health/ || exit 1
+
+# Expose port
+EXPOSE 8000
+
+# Default command (overridden in docker-compose)
+CMD ["gunicorn", "lifegraph.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "4"]

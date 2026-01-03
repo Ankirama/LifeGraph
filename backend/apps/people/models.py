@@ -1,9 +1,12 @@
 """
 People app models - Person, Relationship, RelationshipType, Anecdote.
+
+Sensitive personal data is encrypted at rest using Fernet (AES-128-CBC).
 """
 
 from django.db import models
 
+from apps.core.encryption import EncryptedJSONField, EncryptedTextField
 from apps.core.models import BaseModel, Group, Tag
 
 
@@ -21,23 +24,26 @@ class Person(BaseModel):
     # Dates
     birthday = models.DateField(null=True, blank=True)
     met_date = models.DateField(null=True, blank=True)
-    met_context = models.TextField(blank=True, help_text="How/where you met this person")
+    met_context = EncryptedTextField(
+        blank=True,
+        help_text="How/where you met this person (encrypted)",
+    )
 
-    # Contact Information (JSON for flexibility)
-    emails = models.JSONField(
+    # Contact Information (JSON, encrypted for privacy)
+    emails = EncryptedJSONField(
         default=list,
         blank=True,
-        help_text='List of {"email": "...", "label": "work/personal/..."}',
+        help_text='List of {"email": "...", "label": "work/personal/..."} (encrypted)',
     )
-    phones = models.JSONField(
+    phones = EncryptedJSONField(
         default=list,
         blank=True,
-        help_text='List of {"phone": "...", "label": "mobile/home/..."}',
+        help_text='List of {"phone": "...", "label": "mobile/home/..."} (encrypted)',
     )
-    addresses = models.JSONField(
+    addresses = EncryptedJSONField(
         default=list,
         blank=True,
-        help_text='List of {"address": "...", "label": "home/work/..."}',
+        help_text='List of {"address": "...", "label": "home/work/..."} (encrypted)',
     )
 
     # Social
@@ -45,7 +51,10 @@ class Person(BaseModel):
     discord_id = models.CharField(max_length=50, blank=True)
 
     # Metadata
-    notes = models.TextField(blank=True, help_text="General notes about this person")
+    notes = EncryptedTextField(
+        blank=True,
+        help_text="General notes about this person (encrypted)",
+    )
     is_active = models.BooleanField(default=True, help_text="Soft delete flag")
     is_owner = models.BooleanField(default=False, help_text="True if this is the CRM owner (you)")
 
@@ -159,7 +168,7 @@ class Relationship(BaseModel):
 
     # Metadata
     started_date = models.DateField(null=True, blank=True)
-    notes = models.TextField(blank=True)
+    notes = EncryptedTextField(blank=True, help_text="Notes about this relationship (encrypted)")
     strength = models.IntegerField(
         null=True,
         blank=True,
@@ -201,7 +210,7 @@ class Anecdote(BaseModel):
         NOTE = "note", "Note"
 
     title = models.CharField(max_length=255, blank=True)
-    content = models.TextField(help_text="Rich text / Markdown content")
+    content = EncryptedTextField(help_text="Rich text / Markdown content (encrypted)")
     date = models.DateField(null=True, blank=True, help_text="When this happened")
     location = models.CharField(max_length=255, blank=True)
 
@@ -269,7 +278,7 @@ class CustomFieldValue(BaseModel):
         on_delete=models.CASCADE,
         related_name="values",
     )
-    value = models.JSONField(help_text="Flexible storage for any field type")
+    value = EncryptedJSONField(help_text="Flexible storage for any field type (encrypted)")
 
     class Meta:
         constraints = [
@@ -350,7 +359,7 @@ class Employment(BaseModel):
 
     # Additional info
     location = models.CharField(max_length=255, blank=True)
-    description = models.TextField(blank=True)
+    description = EncryptedTextField(blank=True, help_text="Job description (encrypted)")
 
     # LinkedIn sync
     linkedin_synced = models.BooleanField(default=False)

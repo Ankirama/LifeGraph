@@ -9,11 +9,14 @@ from django.contrib.contenttypes.models import ContentType
 from django.db.models import Count
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.db.models import Q
+from django.utils.decorators import method_decorator
 from django_filters import rest_framework as filters
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from apps.core.ratelimit import ai_ratelimit, upload_ratelimit
 
 from .models import (
     Anecdote,
@@ -118,9 +121,10 @@ class PersonViewSet(viewsets.ModelViewSet):
         serializer = AnecdoteSerializer(anecdotes, many=True)
         return Response(serializer.data)
 
+    @method_decorator(ai_ratelimit())
     @action(detail=True, methods=["post"])
     def generate_summary(self, request, pk=None):
-        """Generate AI summary for a person."""
+        """Generate AI summary for a person. Rate limited to prevent abuse."""
         person = self.get_object()
 
         # Get owner for relationship context
@@ -235,9 +239,10 @@ class PersonViewSet(viewsets.ModelViewSet):
 
         return Response(history)
 
+    @method_decorator(ai_ratelimit())
     @action(detail=True, methods=["post"])
     def suggest_tags(self, request, pk=None):
-        """Suggest AI-generated tags for a person."""
+        """Suggest AI-generated tags for a person. Rate limited to prevent abuse."""
         person = self.get_object()
 
         # Get owner for relationship context
@@ -497,9 +502,10 @@ class PhotoViewSet(viewsets.ModelViewSet):
     ordering_fields = ["date_taken", "created_at"]
     ordering = ["-date_taken", "-created_at"]
 
+    @method_decorator(ai_ratelimit())
     @action(detail=True, methods=["post"])
     def generate_description(self, request, pk=None):
-        """Generate AI description for a photo using OpenAI Vision."""
+        """Generate AI description for a photo using OpenAI Vision. Rate limited."""
         photo = self.get_object()
 
         # Build full URL for the image
@@ -741,8 +747,10 @@ class AIParseContactsView(APIView):
     Parse natural language text into structured contact data using AI.
 
     POST: Accepts text describing contacts and returns parsed structured data.
+    Rate limited to prevent abuse of expensive AI operations.
     """
 
+    @method_decorator(ai_ratelimit())
     def post(self, request):
         text = request.data.get("text", "").strip()
         if not text:
@@ -777,8 +785,10 @@ class AIBulkImportView(APIView):
     Bulk import contacts from AI-parsed data.
 
     POST: Creates persons and relationships from parsed contact data.
+    Rate limited to prevent abuse.
     """
 
+    @method_decorator(ai_ratelimit())
     def post(self, request):
         persons_data = request.data.get("persons", [])
         if not persons_data:
@@ -865,8 +875,10 @@ class AIParseUpdatesView(APIView):
     Parse natural language text into updates for existing contacts using AI.
 
     POST: Accepts text describing updates/memories and returns parsed structured data.
+    Rate limited to prevent abuse of expensive AI operations.
     """
 
+    @method_decorator(ai_ratelimit())
     def post(self, request):
         text = request.data.get("text", "").strip()
         if not text:
@@ -933,8 +945,10 @@ class AIApplyUpdatesView(APIView):
     Apply AI-parsed updates to existing contacts.
 
     POST: Applies field updates and creates anecdotes from parsed data.
+    Rate limited to prevent abuse.
     """
 
+    @method_decorator(ai_ratelimit())
     def post(self, request):
         updates_data = request.data.get("updates", [])
         if not updates_data:
@@ -1135,8 +1149,10 @@ class AIChatView(APIView):
     AI-powered chat about contacts.
 
     POST: Answer questions about the user's contacts using AI.
+    Rate limited to prevent abuse of expensive AI operations.
     """
 
+    @method_decorator(ai_ratelimit())
     def post(self, request):
         question = request.data.get("question", "").strip()
         if not question:

@@ -201,3 +201,29 @@ OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 # WARNING: Uses unofficial API. Use sparingly to avoid account restrictions.
 LINKEDIN_EMAIL = env("LINKEDIN_EMAIL", default="")
 LINKEDIN_PASSWORD = env("LINKEDIN_PASSWORD", default="")
+
+# Rate Limiting Configuration
+# Uses django-ratelimit for per-view rate limiting
+RATELIMIT_ENABLE = env.bool("RATELIMIT_ENABLE", default=True)
+RATELIMIT_USE_CACHE = "default"
+RATELIMIT_VIEW = "apps.core.views.ratelimited_error"
+
+# Rate limit settings (requests per time period)
+RATELIMIT_API_DEFAULT = env("RATELIMIT_API_DEFAULT", default="100/m")  # 100 requests/minute
+RATELIMIT_API_AI = env("RATELIMIT_API_AI", default="10/m")  # 10 AI requests/minute
+RATELIMIT_API_UPLOAD = env("RATELIMIT_API_UPLOAD", default="20/m")  # 20 uploads/minute
+RATELIMIT_LOGIN = env("RATELIMIT_LOGIN", default="5/m")  # 5 login attempts/minute
+
+# Cache configuration (required for rate limiting)
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("REDIS_URL", default="redis://localhost:6379/0"),
+    }
+}
+
+# Field-Level Encryption (Fernet/AES-128-CBC)
+# Generate key with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# You can add multiple keys for key rotation - first key is used for encryption,
+# all keys are tried for decryption (newest first)
+FERNET_KEYS = env.list("FERNET_KEYS", default=[])

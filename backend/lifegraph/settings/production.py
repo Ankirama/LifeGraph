@@ -13,6 +13,12 @@ DATABASES = {
     "default": env.db("DATABASE_URL")  # noqa: F405
 }
 
+# Add CSP middleware for production
+MIDDLEWARE.insert(  # noqa: F405
+    MIDDLEWARE.index("django.middleware.security.SecurityMiddleware") + 1,  # noqa: F405
+    "csp.middleware.CSPMiddleware",
+)
+
 # Security settings
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -21,14 +27,53 @@ SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
+# SSL/HTTPS enforcement
+SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)  # noqa: F405
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 # Cookie security
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_AGE = 86400 * 7  # 7 days
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 
 # CORS - restrict to allowed origins
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])  # noqa: F405
+CORS_ALLOW_CREDENTIALS = True
+
+# CSRF trusted origins (for reverse proxy)
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])  # noqa: F405
+
+# Content Security Policy (CSP)
+CSP_DEFAULT_SRC = ("'self'",)
+CSP_SCRIPT_SRC = ("'self'",)
+CSP_STYLE_SRC = ("'self'", "'unsafe-inline'")  # unsafe-inline needed for some UI libs
+CSP_IMG_SRC = ("'self'", "data:", "blob:")
+CSP_FONT_SRC = ("'self'", "data:")
+CSP_CONNECT_SRC = ("'self'",)
+CSP_FRAME_ANCESTORS = ("'none'",)
+CSP_FORM_ACTION = ("'self'",)
+CSP_BASE_URI = ("'self'",)
+CSP_OBJECT_SRC = ("'none'",)
+
+# Referrer Policy
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+
+# Permissions Policy (formerly Feature Policy)
+PERMISSIONS_POLICY = {
+    "accelerometer": [],
+    "camera": [],
+    "geolocation": [],
+    "gyroscope": [],
+    "magnetometer": [],
+    "microphone": [],
+    "payment": [],
+    "usb": [],
+}
 
 # MinIO / S3 storage for production
 AWS_ACCESS_KEY_ID = env("MINIO_ACCESS_KEY", default="")  # noqa: F405
