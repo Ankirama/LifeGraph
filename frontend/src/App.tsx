@@ -11,6 +11,7 @@ import { RelationshipsPage } from '@/pages/RelationshipsPage'
 import { GraphPage } from '@/pages/GraphPage'
 import { MyProfile } from '@/pages/MyProfile'
 import { ChatPage } from '@/pages/ChatPage'
+import { SmartSearchPage } from '@/pages/SmartSearchPage'
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="chat" element={<ChatPage />} />
+        <Route path="search" element={<SmartSearchPage />} />
         <Route path="people" element={<PeopleList />} />
         <Route path="people/:id" element={<PersonDetail />} />
         <Route path="relationships" element={<RelationshipsPage />} />

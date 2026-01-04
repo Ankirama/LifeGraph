@@ -603,3 +603,152 @@ class TestAIApplyRelationshipSuggestionAPI:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "already exists" in response.data["detail"]
+
+
+# =============================================================================
+# AI Smart Search Tests
+# =============================================================================
+
+
+@pytest.mark.django_db
+class TestAISmartSearchAPI:
+    """Tests for the AI Smart Search API."""
+
+    def test_smart_search_unauthenticated(self, api_client):
+        """Test that unauthenticated requests are rejected."""
+        url = reverse("ai-smart-search")
+        response = api_client.post(url, {"query": "test"}, format="json")
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_smart_search_short_query(self, authenticated_client):
+        """Test that queries shorter than 3 characters are rejected."""
+        url = reverse("ai-smart-search")
+        response = authenticated_client.post(url, {"query": "ab"}, format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "at least 3 characters" in response.data["detail"]
+
+    def test_smart_search_empty_query(self, authenticated_client):
+        """Test that empty queries are rejected."""
+        url = reverse("ai-smart-search")
+        response = authenticated_client.post(url, {"query": ""}, format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_smart_search_success(self, authenticated_client, without_rate_limit):
+        """Test successful smart search with mocked AI."""
+        # Create some persons
+        PersonFactory(first_name="John", last_name="Doe", is_owner=False)
+        PersonFactory(first_name="Jane", last_name="Smith", is_owner=False)
+
+        with patch("apps.people.views.smart_search") as mock_smart_search:
+            mock_smart_search.return_value = {
+                "search_type": "person",
+                "intent": "Find people named John",
+                "person_filters": {"name_contains": "John"},
+                "anecdote_filters": {},
+                "employment_filters": {},
+                "sort_by": "relevance",
+                "limit": 20,
+                "keywords": ["John"],
+            }
+
+            url = reverse("ai-smart-search")
+            response = authenticated_client.post(
+                url, {"query": "Find John"}, format="json"
+            )
+
+            assert response.status_code == status.HTTP_200_OK
+            assert "interpreted_as" in response.data
+            assert "persons" in response.data
+            assert "anecdotes" in response.data
+            assert "counts" in response.data
+
+    def test_smart_search_with_company_filter(self, authenticated_client, without_rate_limit):
+        """Test smart search with company filter."""
+        from apps.people.models import Employment
+
+        person = PersonFactory(first_name="Alice", last_name="Tech", is_owner=False)
+        Employment.objects.create(
+            person=person,
+            company="Google",
+            title="Engineer",
+            is_current=True,
+        )
+
+        with patch("apps.people.views.smart_search") as mock_smart_search:
+            mock_smart_search.return_value = {
+                "search_type": "person",
+                "intent": "Find people who work at Google",
+                "person_filters": {"works_at": "Google"},
+                "anecdote_filters": {},
+                "employment_filters": {},
+                "sort_by": "relevance",
+                "limit": 20,
+                "keywords": ["Google"],
+            }
+
+            url = reverse("ai-smart-search")
+            response = authenticated_client.post(
+                url, {"query": "Who works at Google?"}, format="json"
+            )
+
+            assert response.status_code == status.HTTP_200_OK
+            assert len(response.data["persons"]) >= 1
+            assert any("Google" in (p.get("current_job") or "") for p in response.data["persons"])
+
+    def test_smart_search_anecdotes(self, authenticated_client, without_rate_limit):
+        """Test smart search for anecdotes."""
+        from apps.people.models import Anecdote
+
+        person = PersonFactory(is_owner=False)
+        Anecdote.objects.create(
+            title="Paris Trip",
+            content="Great time in Paris",
+            anecdote_type="memory",
+            location="Paris",
+        )
+
+        with patch("apps.people.views.smart_search") as mock_smart_search:
+            mock_smart_search.return_value = {
+                "search_type": "anecdote",
+                "intent": "Find memories from Paris",
+                "person_filters": {},
+                "anecdote_filters": {"location_contains": "Paris"},
+                "employment_filters": {},
+                "sort_by": "relevance",
+                "limit": 20,
+                "keywords": ["Paris", "memories"],
+            }
+
+            url = reverse("ai-smart-search")
+            response = authenticated_client.post(
+                url, {"query": "Memories from Paris"}, format="json"
+            )
+
+            assert response.status_code == status.HTTP_200_OK
+            assert len(response.data["anecdotes"]) >= 1
+
+    def test_smart_search_no_results(self, authenticated_client, without_rate_limit):
+        """Test smart search with no matching results."""
+        with patch("apps.people.views.smart_search") as mock_smart_search:
+            mock_smart_search.return_value = {
+                "search_type": "person",
+                "intent": "Find nonexistent person",
+                "person_filters": {"name_contains": "XYZNonexistent123"},
+                "anecdote_filters": {},
+                "employment_filters": {},
+                "sort_by": "relevance",
+                "limit": 20,
+                "keywords": ["XYZNonexistent123"],
+            }
+
+            url = reverse("ai-smart-search")
+            response = authenticated_client.post(
+                url, {"query": "Find XYZNonexistent123"}, format="json"
+            )
+
+            assert response.status_code == status.HTTP_200_OK
+            assert response.data["counts"]["persons"] == 0
+            assert response.data["counts"]["anecdotes"] == 0

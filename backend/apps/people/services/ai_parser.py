@@ -867,3 +867,138 @@ Today's date: {today_date}
     except Exception as e:
         logger.error(f"OpenAI API error in chat: {e}")
         raise
+
+
+SMART_SEARCH_SYSTEM_PROMPT = """You are an assistant that converts natural language search queries into structured search parameters for a personal CRM.
+
+The CRM contains:
+- Persons (contacts) with: first_name, last_name, nickname, birthday, notes, relationship_to_me, met_context, tags, groups
+- Employments: company, title, is_current, start_date, end_date
+- Anecdotes: title, content, anecdote_type (memory/quote/joke/note), date, location
+- Relationships: between people (colleague, friend, family, etc.)
+- Photos: with tagged people and AI descriptions
+
+Given a natural language query, return a JSON object with search parameters:
+{
+  "search_type": "person" | "anecdote" | "employment" | "mixed",
+  "intent": "brief description of what user is looking for",
+  "person_filters": {
+    "name_contains": "string or null",
+    "relationship_type": "colleague/friend/family/etc or null",
+    "tag": "tag name or null",
+    "group": "group name or null",
+    "has_birthday_soon": true/false (within 30 days),
+    "works_at": "company name or null",
+    "job_title_contains": "title or null",
+    "notes_contain": "text or null",
+    "met_context_contains": "text or null"
+  },
+  "anecdote_filters": {
+    "content_contains": "text or null",
+    "anecdote_type": "memory/quote/joke/note or null",
+    "location_contains": "text or null",
+    "date_range": {"start": "YYYY-MM-DD or null", "end": "YYYY-MM-DD or null"}
+  },
+  "employment_filters": {
+    "company_contains": "string or null",
+    "title_contains": "string or null",
+    "is_current": true/false/null
+  },
+  "sort_by": "relevance/name/birthday/recent_activity/null",
+  "limit": number (default 20, max 100),
+  "keywords": ["list", "of", "key", "terms", "for", "text", "search"]
+}
+
+Examples:
+- "Who works at Google?" → person_filters.works_at = "Google"
+- "Find friends I met at the conference" → person_filters.relationship_type = "friend", person_filters.met_context_contains = "conference"
+- "Colleagues with upcoming birthdays" → person_filters.relationship_type = "colleague", person_filters.has_birthday_soon = true
+- "Memories from Paris" → search_type = "anecdote", anecdote_filters.location_contains = "Paris", anecdote_filters.anecdote_type = "memory"
+- "People tagged as tech" → person_filters.tag = "tech"
+- "John from my running group" → person_filters.name_contains = "John", person_filters.group = "running"
+
+Rules:
+1. Be flexible with matching - use contains for most text fields
+2. Infer relationship types from context (e.g., "coworkers" → "colleague")
+3. For complex queries, set search_type to "mixed" and provide filters for both persons and anecdotes
+4. Always include keywords extracted from the query for full-text fallback search
+5. Return ONLY valid JSON, no other text"""
+
+
+def smart_search(
+    query: str,
+    available_tags: list[str],
+    available_groups: list[str],
+    available_relationship_types: list[str],
+    available_companies: list[str],
+) -> dict[str, Any]:
+    """
+    Convert a natural language search query into structured search parameters.
+
+    Args:
+        query: Natural language search query
+        available_tags: List of existing tags in the system
+        available_groups: List of existing groups
+        available_relationship_types: List of available relationship type names
+        available_companies: List of companies from employments
+
+    Returns:
+        Structured search parameters dictionary
+    """
+    client = get_openai_client()
+
+    # Build context about available options
+    context_parts = ["Available options for filtering:"]
+    if available_tags:
+        context_parts.append(f"Tags: {', '.join(available_tags[:30])}")
+    if available_groups:
+        context_parts.append(f"Groups: {', '.join(available_groups[:20])}")
+    if available_relationship_types:
+        context_parts.append(f"Relationship types: {', '.join(available_relationship_types[:20])}")
+    if available_companies:
+        context_parts.append(f"Companies: {', '.join(available_companies[:20])}")
+
+    context = "\n".join(context_parts)
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": SMART_SEARCH_SYSTEM_PROMPT},
+                {"role": "user", "content": f"{context}\n\nSearch query: {query}"},
+            ],
+            temperature=0.2,  # Low temperature for consistent parsing
+            response_format={"type": "json_object"},
+        )
+
+        content = response.choices[0].message.content
+        result = json.loads(content)
+
+        # Validate and provide defaults
+        return {
+            "search_type": result.get("search_type", "person"),
+            "intent": result.get("intent", query),
+            "person_filters": result.get("person_filters", {}),
+            "anecdote_filters": result.get("anecdote_filters", {}),
+            "employment_filters": result.get("employment_filters", {}),
+            "sort_by": result.get("sort_by"),
+            "limit": min(result.get("limit", 20), 100),
+            "keywords": result.get("keywords", query.split()),
+        }
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse OpenAI smart search response as JSON: {e}")
+        # Fall back to simple keyword search
+        return {
+            "search_type": "mixed",
+            "intent": query,
+            "person_filters": {},
+            "anecdote_filters": {},
+            "employment_filters": {},
+            "sort_by": "relevance",
+            "limit": 20,
+            "keywords": query.split(),
+        }
+    except Exception as e:
+        logger.error(f"OpenAI API error in smart search: {e}")
+        raise

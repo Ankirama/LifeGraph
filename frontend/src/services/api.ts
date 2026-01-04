@@ -650,4 +650,52 @@ export const applyRelationshipSuggestion = async (
   return data
 }
 
+// AI Smart Search
+export interface SmartSearchPersonResult {
+  id: string
+  full_name: string
+  relationship_to_me: string | null
+  current_job: string | null
+  tags: string[]
+  avatar_url: string | null
+}
+
+export interface SmartSearchAnecdoteResult {
+  id: string
+  title: string
+  content: string
+  anecdote_type: string
+  date: string | null
+  location: string | null
+  persons: string[]
+}
+
+export interface SmartSearchEmploymentResult {
+  id: string
+  person_id: string
+  person_name: string
+  company: string
+  title: string
+  is_current: boolean
+}
+
+export interface SmartSearchResponse {
+  query: string
+  interpreted_as: string
+  search_type: 'person' | 'anecdote' | 'employment' | 'mixed'
+  persons: SmartSearchPersonResult[]
+  anecdotes: SmartSearchAnecdoteResult[]
+  employments: SmartSearchEmploymentResult[]
+  counts: {
+    persons: number
+    anecdotes: number
+    employments: number
+  }
+}
+
+export const smartSearch = async (query: string): Promise<SmartSearchResponse> => {
+  const { data } = await api.post('/ai/smart-search/', { query })
+  return data
+}
+
 export default api

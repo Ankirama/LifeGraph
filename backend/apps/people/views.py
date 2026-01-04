@@ -38,13 +38,14 @@ from .serializers import (
     RelationshipSerializer,
     RelationshipTypeSerializer,
 )
-from apps.core.models import Tag
+from apps.core.models import Group, Tag
 from .services import (
     chat_with_context,
     generate_person_summary,
     generate_photo_description,
     parse_contacts_text,
     parse_updates_text,
+    smart_search,
     suggest_relationships,
     suggest_tags_for_person,
     sync_person_from_linkedin,
@@ -1545,3 +1546,262 @@ class AIApplyRelationshipSuggestionView(APIView):
             "relationship_type": rel_type.name,
             "message": f"Created relationship: {person1.full_name} is {rel_type.name} of {person2.full_name}",
         }, status=status.HTTP_201_CREATED)
+
+
+class AISmartSearchView(APIView):
+    """
+    AI-powered natural language search.
+
+    POST: Interpret natural language query and search across all data.
+    Rate limited to prevent abuse of expensive AI operations.
+    """
+
+    @method_decorator(ai_ratelimit())
+    def post(self, request):
+        query = request.data.get("query", "").strip()
+        if not query or len(query) < 3:
+            return Response(
+                {"detail": "Query must be at least 3 characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Gather available options for the AI to reference
+        available_tags = list(Tag.objects.values_list("name", flat=True))
+        available_groups = list(Group.objects.values_list("name", flat=True))
+        available_relationship_types = list(
+            RelationshipType.objects.values_list("name", flat=True)
+        )
+        available_companies = list(
+            Employment.objects.filter(company__isnull=False)
+            .values_list("company", flat=True)
+            .distinct()[:50]
+        )
+
+        # Get AI interpretation of the query
+        try:
+            search_params = smart_search(
+                query=query,
+                available_tags=available_tags,
+                available_groups=available_groups,
+                available_relationship_types=available_relationship_types,
+                available_companies=available_companies,
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"AI search failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Execute the search based on parsed parameters
+        results = {
+            "query": query,
+            "interpreted_as": search_params.get("intent", query),
+            "search_type": search_params.get("search_type", "mixed"),
+            "persons": [],
+            "anecdotes": [],
+            "employments": [],
+        }
+
+        limit = search_params.get("limit", 20)
+        person_filters = search_params.get("person_filters", {})
+        anecdote_filters = search_params.get("anecdote_filters", {})
+        employment_filters = search_params.get("employment_filters", {})
+        keywords = search_params.get("keywords", [])
+
+        # Build person query
+        if search_params.get("search_type") in ("person", "mixed"):
+            person_qs = Person.objects.filter(is_active=True, is_owner=False)
+
+            # Apply person filters
+            if person_filters.get("name_contains"):
+                name = person_filters["name_contains"]
+                person_qs = person_qs.filter(
+                    Q(first_name__icontains=name) |
+                    Q(last_name__icontains=name) |
+                    Q(nickname__icontains=name)
+                )
+
+            if person_filters.get("tag"):
+                person_qs = person_qs.filter(tags__name__iexact=person_filters["tag"])
+
+            if person_filters.get("group"):
+                person_qs = person_qs.filter(groups__name__iexact=person_filters["group"])
+
+            if person_filters.get("notes_contain"):
+                person_qs = person_qs.filter(notes__icontains=person_filters["notes_contain"])
+
+            if person_filters.get("met_context_contains"):
+                person_qs = person_qs.filter(
+                    met_context__icontains=person_filters["met_context_contains"]
+                )
+
+            if person_filters.get("relationship_type"):
+                rel_type = person_filters["relationship_type"]
+                # Find persons with this relationship type (either side)
+                person_qs = person_qs.filter(
+                    Q(relationships_as_b__relationship_type__name__icontains=rel_type) |
+                    Q(relationships_as_a__relationship_type__name__icontains=rel_type) |
+                    Q(relationships_as_b__relationship_type__inverse_name__icontains=rel_type) |
+                    Q(relationships_as_a__relationship_type__inverse_name__icontains=rel_type)
+                )
+
+            if person_filters.get("works_at"):
+                company = person_filters["works_at"]
+                person_qs = person_qs.filter(
+                    employments__company__icontains=company,
+                    employments__is_current=True,
+                )
+
+            if person_filters.get("job_title_contains"):
+                title = person_filters["job_title_contains"]
+                person_qs = person_qs.filter(
+                    employments__title__icontains=title,
+                    employments__is_current=True,
+                )
+
+            if person_filters.get("has_birthday_soon"):
+                from datetime import date, timedelta
+                today = date.today()
+                # Check for birthdays in the next 30 days
+                person_qs = person_qs.filter(birthday__isnull=False)
+                # We'll filter this in Python since date arithmetic with month/day is complex
+                persons_with_birthday = []
+                for person in person_qs.distinct()[:100]:
+                    if person.birthday:
+                        this_year_bday = person.birthday.replace(year=today.year)
+                        if this_year_bday < today:
+                            this_year_bday = this_year_bday.replace(year=today.year + 1)
+                        days_until = (this_year_bday - today).days
+                        if 0 <= days_until <= 30:
+                            persons_with_birthday.append(person.id)
+                person_qs = Person.objects.filter(id__in=persons_with_birthday)
+
+            # If no specific filters matched, do keyword search
+            if not any(person_filters.values()) and keywords:
+                keyword_q = Q()
+                for kw in keywords[:5]:  # Limit keywords
+                    keyword_q |= (
+                        Q(first_name__icontains=kw) |
+                        Q(last_name__icontains=kw) |
+                        Q(nickname__icontains=kw) |
+                        Q(notes__icontains=kw) |
+                        Q(met_context__icontains=kw)
+                    )
+                person_qs = person_qs.filter(keyword_q)
+
+            # Get owner for relationship lookup
+            owner = Person.objects.filter(is_owner=True).first()
+
+            # Serialize results
+            for person in person_qs.distinct()[:limit]:
+                current_emp = person.employments.filter(is_current=True).first()
+
+                # Get relationship to owner
+                relationship_to_me = None
+                if owner:
+                    # Check if person is person_b in relationship with owner as person_a
+                    rel = Relationship.objects.filter(
+                        person_a=owner, person_b=person
+                    ).select_related("relationship_type").first()
+                    if rel:
+                        relationship_to_me = rel.relationship_type.name
+                    else:
+                        # Check if person is person_a in relationship with owner as person_b
+                        rel = Relationship.objects.filter(
+                            person_a=person, person_b=owner
+                        ).select_related("relationship_type").first()
+                        if rel:
+                            relationship_to_me = rel.relationship_type.inverse_name or rel.relationship_type.name
+
+                results["persons"].append({
+                    "id": str(person.id),
+                    "full_name": person.full_name,
+                    "relationship_to_me": relationship_to_me,
+                    "current_job": f"{current_emp.title} at {current_emp.company}" if current_emp else None,
+                    "tags": [t.name for t in person.tags.all()[:5]],
+                    "avatar_url": person.avatar.url if person.avatar else None,
+                })
+
+        # Build anecdote query
+        if search_params.get("search_type") in ("anecdote", "mixed"):
+            anecdote_qs = Anecdote.objects.all()
+
+            if anecdote_filters.get("content_contains"):
+                text = anecdote_filters["content_contains"]
+                anecdote_qs = anecdote_qs.filter(
+                    Q(title__icontains=text) | Q(content__icontains=text)
+                )
+
+            if anecdote_filters.get("anecdote_type"):
+                anecdote_qs = anecdote_qs.filter(
+                    anecdote_type=anecdote_filters["anecdote_type"]
+                )
+
+            if anecdote_filters.get("location_contains"):
+                anecdote_qs = anecdote_qs.filter(
+                    location__icontains=anecdote_filters["location_contains"]
+                )
+
+            date_range = anecdote_filters.get("date_range", {})
+            if date_range.get("start"):
+                anecdote_qs = anecdote_qs.filter(date__gte=date_range["start"])
+            if date_range.get("end"):
+                anecdote_qs = anecdote_qs.filter(date__lte=date_range["end"])
+
+            # If no specific filters, keyword search
+            if not any(anecdote_filters.values()) and keywords:
+                keyword_q = Q()
+                for kw in keywords[:5]:
+                    keyword_q |= (
+                        Q(title__icontains=kw) |
+                        Q(content__icontains=kw) |
+                        Q(location__icontains=kw)
+                    )
+                anecdote_qs = anecdote_qs.filter(keyword_q)
+
+            for anecdote in anecdote_qs.distinct()[:limit]:
+                results["anecdotes"].append({
+                    "id": str(anecdote.id),
+                    "title": anecdote.title,
+                    "content": anecdote.content[:200] + "..." if len(anecdote.content) > 200 else anecdote.content,
+                    "anecdote_type": anecdote.anecdote_type,
+                    "date": anecdote.date.isoformat() if anecdote.date else None,
+                    "location": anecdote.location,
+                    "persons": [p.full_name for p in anecdote.persons.all()[:3]],
+                })
+
+        # Build employment query (usually for "who works at X" type queries)
+        if employment_filters.get("company_contains") or employment_filters.get("title_contains"):
+            emp_qs = Employment.objects.select_related("person")
+
+            if employment_filters.get("company_contains"):
+                emp_qs = emp_qs.filter(
+                    company__icontains=employment_filters["company_contains"]
+                )
+
+            if employment_filters.get("title_contains"):
+                emp_qs = emp_qs.filter(
+                    title__icontains=employment_filters["title_contains"]
+                )
+
+            if employment_filters.get("is_current") is not None:
+                emp_qs = emp_qs.filter(is_current=employment_filters["is_current"])
+
+            for emp in emp_qs.distinct()[:limit]:
+                results["employments"].append({
+                    "id": str(emp.id),
+                    "person_id": str(emp.person.id),
+                    "person_name": emp.person.full_name,
+                    "company": emp.company,
+                    "title": emp.title,
+                    "is_current": emp.is_current,
+                })
+
+        # Add total counts
+        results["counts"] = {
+            "persons": len(results["persons"]),
+            "anecdotes": len(results["anecdotes"]),
+            "employments": len(results["employments"]),
+        }
+
+        return Response(results)
