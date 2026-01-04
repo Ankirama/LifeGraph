@@ -12,8 +12,6 @@ IMPORTANT:
 
 from django.db import migrations
 
-import fernet_fields.fields
-
 import apps.core.encryption
 
 

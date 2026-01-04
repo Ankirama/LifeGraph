@@ -24,11 +24,28 @@ class PeopleConfig(AppConfig):
             RelationshipType,
         )
 
-        auditlog.register(Person)
-        auditlog.register(Relationship)
+        # Register models with auditlog, excluding encrypted fields that
+        # cause serialization issues with the diff mechanism
+        auditlog.register(
+            Person,
+            exclude_fields=["met_context", "emails", "phones", "addresses", "notes"],
+        )
+        auditlog.register(
+            Relationship,
+            exclude_fields=["notes"],
+        )
         auditlog.register(RelationshipType)
-        auditlog.register(Anecdote)
+        auditlog.register(
+            Anecdote,
+            exclude_fields=["content"],
+        )
         auditlog.register(Photo)
-        auditlog.register(Employment)
+        auditlog.register(
+            Employment,
+            exclude_fields=["description"],
+        )
         auditlog.register(CustomFieldDefinition)
-        auditlog.register(CustomFieldValue)
+        auditlog.register(
+            CustomFieldValue,
+            exclude_fields=["value"],
+        )

@@ -17,8 +17,8 @@ class Person(BaseModel):
 
     # Identity
     first_name = models.CharField(max_length=150)
-    last_name = models.CharField(max_length=150, blank=True)
-    nickname = models.CharField(max_length=100, blank=True)
+    last_name = models.CharField(max_length=150, blank=True, default="")
+    nickname = models.CharField(max_length=100, blank=True, default="")
     avatar = models.ImageField(upload_to="avatars/", blank=True)
 
     # Dates
@@ -26,6 +26,8 @@ class Person(BaseModel):
     met_date = models.DateField(null=True, blank=True)
     met_context = EncryptedTextField(
         blank=True,
+        null=True,  # EncryptedTextField converts empty strings to None
+        default="",
         help_text="How/where you met this person (encrypted)",
     )
 
@@ -47,19 +49,21 @@ class Person(BaseModel):
     )
 
     # Social
-    linkedin_url = models.URLField(blank=True)
-    discord_id = models.CharField(max_length=50, blank=True)
+    linkedin_url = models.URLField(blank=True, default="")
+    discord_id = models.CharField(max_length=50, blank=True, default="")
 
     # Metadata
     notes = EncryptedTextField(
         blank=True,
+        null=True,  # EncryptedTextField converts empty strings to None
+        default="",
         help_text="General notes about this person (encrypted)",
     )
     is_active = models.BooleanField(default=True, help_text="Soft delete flag")
     is_owner = models.BooleanField(default=False, help_text="True if this is the CRM owner (you)")
 
     # AI
-    ai_summary = models.TextField(blank=True, help_text="AI-generated summary")
+    ai_summary = models.TextField(blank=True, default="", help_text="AI-generated summary")
     ai_summary_updated = models.DateTimeField(null=True, blank=True)
 
     # Tracking
@@ -168,7 +172,12 @@ class Relationship(BaseModel):
 
     # Metadata
     started_date = models.DateField(null=True, blank=True)
-    notes = EncryptedTextField(blank=True, help_text="Notes about this relationship (encrypted)")
+    notes = EncryptedTextField(
+        blank=True,
+        null=True,  # EncryptedTextField converts empty strings to None
+        default="",
+        help_text="Notes about this relationship (encrypted)",
+    )
     strength = models.IntegerField(
         null=True,
         blank=True,
@@ -359,7 +368,12 @@ class Employment(BaseModel):
 
     # Additional info
     location = models.CharField(max_length=255, blank=True)
-    description = EncryptedTextField(blank=True, help_text="Job description (encrypted)")
+    description = EncryptedTextField(
+        blank=True,
+        null=True,  # EncryptedTextField converts empty strings to None
+        default="",
+        help_text="Job description (encrypted)",
+    )
 
     # LinkedIn sync
     linkedin_synced = models.BooleanField(default=False)

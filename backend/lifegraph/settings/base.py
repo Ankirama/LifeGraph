@@ -227,3 +227,9 @@ CACHES = {
 # You can add multiple keys for key rotation - first key is used for encryption,
 # all keys are tried for decryption (newest first)
 FERNET_KEYS = env.list("FERNET_KEYS", default=[])
+
+# SALT_KEY for django-fernet-encrypted-fields library
+# Uses the first FERNET_KEY or a development-only default
+# Generate key with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+_default_salt_key = "nPeVr-3q4Yi7VAoKjDXtpg5zg9DIhzj9JaMZxutwrHI="
+SALT_KEY = env("SALT_KEY", default=FERNET_KEYS[0] if FERNET_KEYS else _default_salt_key)
