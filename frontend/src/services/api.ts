@@ -10,6 +10,7 @@ import type {
   Anecdote,
   Photo,
   Employment,
+  RelationshipGraphData,
 } from '@/types'
 
 const api = axios.create({
@@ -539,6 +540,16 @@ export const applyTags = async (
     tags,
     create_missing: createMissing,
   })
+  return data
+}
+
+// Relationship Graph
+export const getRelationshipGraph = async (params?: {
+  center_id?: string
+  depth?: number
+  category?: string
+}): Promise<RelationshipGraphData> => {
+  const { data } = await api.get('/relationships/graph/', { params })
   return data
 }
 

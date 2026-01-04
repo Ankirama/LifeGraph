@@ -8,6 +8,7 @@ import { GroupsPage } from '@/pages/GroupsPage'
 import { AnecdotesPage } from '@/pages/AnecdotesPage'
 import { PhotosPage } from '@/pages/PhotosPage'
 import { RelationshipsPage } from '@/pages/RelationshipsPage'
+import { GraphPage } from '@/pages/GraphPage'
 import { MyProfile } from '@/pages/MyProfile'
 import { ChatPage } from '@/pages/ChatPage'
 
@@ -20,6 +21,7 @@ function App() {
         <Route path="people" element={<PeopleList />} />
         <Route path="people/:id" element={<PersonDetail />} />
         <Route path="relationships" element={<RelationshipsPage />} />
+        <Route path="graph" element={<GraphPage />} />
         <Route path="anecdotes" element={<AnecdotesPage />} />
         <Route path="photos" element={<PhotosPage />} />
         <Route path="groups" element={<GroupsPage />} />

@@ -8,6 +8,9 @@ from .base import *  # noqa: F401, F403
 
 DEBUG = False
 
+# Allow testserver for API client tests
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
+
 # Use a simpler secret key for tests
 SECRET_KEY = "test-secret-key-not-for-production"
 

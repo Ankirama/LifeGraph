@@ -171,6 +171,14 @@ class PersonDetailSerializer(serializers.ModelSerializer):
 class PersonCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer for creating and updating persons."""
 
+    # Text fields with blank=True but no default need explicit handling
+    last_name = serializers.CharField(required=False, allow_blank=True, default="")
+    nickname = serializers.CharField(required=False, allow_blank=True, default="")
+    met_context = serializers.CharField(required=False, allow_blank=True, default="")
+    linkedin_url = serializers.CharField(required=False, allow_blank=True, default="")
+    discord_id = serializers.CharField(required=False, allow_blank=True, default="")
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+
     tag_ids = serializers.ListField(
         child=serializers.UUIDField(),
         write_only=True,
@@ -303,7 +311,19 @@ class RelationshipSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, data):
-        if data.get("person_a") == data.get("person_b"):
+        # Get person_a and person_b - use instance values for update if not in data
+        person_a = data.get("person_a")
+        person_b = data.get("person_b")
+
+        # For updates, use existing instance values if not being changed
+        if self.instance:
+            if person_a is None:
+                person_a = self.instance.person_a
+            if person_b is None:
+                person_b = self.instance.person_b
+
+        # Only validate if we have both values
+        if person_a and person_b and person_a == person_b:
             raise serializers.ValidationError(
                 "A person cannot have a relationship with themselves."
             )
@@ -443,6 +463,39 @@ class PhotoSerializer(serializers.ModelSerializer):
             instance.persons.set(person_ids)
 
         return instance
+
+
+class GraphNodeSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for graph nodes (persons)."""
+
+    label = serializers.CharField(source="full_name", read_only=True)
+
+    class Meta:
+        model = Person
+        fields = ["id", "label", "first_name", "last_name", "avatar"]
+
+
+class GraphEdgeSerializer(serializers.Serializer):
+    """Serializer for graph edges (relationships)."""
+
+    id = serializers.UUIDField()
+    source = serializers.UUIDField()
+    target = serializers.UUIDField()
+    type = serializers.CharField()
+    type_name = serializers.CharField()
+    inverse_name = serializers.CharField()
+    category = serializers.CharField()
+    strength = serializers.IntegerField()
+    is_symmetric = serializers.BooleanField()
+
+
+class RelationshipGraphSerializer(serializers.Serializer):
+    """Serializer for the full relationship graph data."""
+
+    nodes = GraphNodeSerializer(many=True)
+    edges = GraphEdgeSerializer(many=True)
+    relationship_types = serializers.ListField(child=serializers.DictField())
+    center_person_id = serializers.UUIDField(allow_null=True)
 
 
 class EmploymentSerializer(serializers.ModelSerializer):

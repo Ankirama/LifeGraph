@@ -179,3 +179,38 @@ export interface CustomFieldValue {
   field_type: string
   value: unknown
 }
+
+// Graph visualization types
+export interface GraphNode {
+  id: string
+  label: string
+  first_name: string
+  last_name: string
+  avatar: string | null
+}
+
+export interface GraphEdge {
+  id: string
+  source: string
+  target: string
+  type: string
+  type_name: string
+  inverse_name: string
+  category: 'family' | 'professional' | 'social' | 'custom'
+  strength: number | null
+  is_symmetric: boolean
+}
+
+export interface GraphRelationshipType {
+  id: string
+  name: string
+  category: 'family' | 'professional' | 'social' | 'custom'
+  color: string
+}
+
+export interface RelationshipGraphData {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+  relationship_types: GraphRelationshipType[]
+  center_person_id: string | null
+}
