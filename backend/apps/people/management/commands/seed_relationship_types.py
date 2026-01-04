@@ -13,15 +13,34 @@ class Command(BaseCommand):
     DEFAULT_TYPES = [
         # Family - Symmetric
         {"name": "spouse", "inverse_name": "spouse", "category": "family", "is_symmetric": True},
+        {"name": "husband", "inverse_name": "wife", "category": "family", "is_symmetric": False},
+        {"name": "wife", "inverse_name": "husband", "category": "family", "is_symmetric": False},
         {"name": "partner", "inverse_name": "partner", "category": "family", "is_symmetric": True},
         {"name": "sibling", "inverse_name": "sibling", "category": "family", "is_symmetric": True},
+        {"name": "brother", "inverse_name": "sibling", "category": "family", "is_symmetric": False},
+        {"name": "sister", "inverse_name": "sibling", "category": "family", "is_symmetric": False},
         {"name": "cousin", "inverse_name": "cousin", "category": "family", "is_symmetric": True},
         {"name": "in-law", "inverse_name": "in-law", "category": "family", "is_symmetric": True},
-        # Family - Asymmetric
+        # Family - Asymmetric (generic)
         {"name": "parent", "inverse_name": "child", "category": "family", "is_symmetric": False},
         {"name": "child", "inverse_name": "parent", "category": "family", "is_symmetric": False},
+        # Family - Asymmetric (specific)
+        {"name": "mother", "inverse_name": "child", "category": "family", "is_symmetric": False},
+        {"name": "father", "inverse_name": "child", "category": "family", "is_symmetric": False},
+        {"name": "son", "inverse_name": "parent", "category": "family", "is_symmetric": False},
+        {"name": "daughter", "inverse_name": "parent", "category": "family", "is_symmetric": False},
+        # Grandparents
         {"name": "grandparent", "inverse_name": "grandchild", "category": "family", "is_symmetric": False},
         {"name": "grandchild", "inverse_name": "grandparent", "category": "family", "is_symmetric": False},
+        {"name": "grandmother", "inverse_name": "grandchild", "category": "family", "is_symmetric": False},
+        {"name": "grandfather", "inverse_name": "grandchild", "category": "family", "is_symmetric": False},
+        {"name": "grandson", "inverse_name": "grandparent", "category": "family", "is_symmetric": False},
+        {"name": "granddaughter", "inverse_name": "grandparent", "category": "family", "is_symmetric": False},
+        # Aunts/Uncles/Nieces/Nephews
+        {"name": "uncle", "inverse_name": "nephew/niece", "category": "family", "is_symmetric": False},
+        {"name": "aunt", "inverse_name": "nephew/niece", "category": "family", "is_symmetric": False},
+        {"name": "nephew", "inverse_name": "uncle/aunt", "category": "family", "is_symmetric": False},
+        {"name": "niece", "inverse_name": "uncle/aunt", "category": "family", "is_symmetric": False},
         {"name": "uncle/aunt", "inverse_name": "nephew/niece", "category": "family", "is_symmetric": False},
         {"name": "nephew/niece", "inverse_name": "uncle/aunt", "category": "family", "is_symmetric": False},
         # Social - Symmetric

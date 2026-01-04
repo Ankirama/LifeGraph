@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { UserCircle, Save } from 'lucide-react'
-import { getMe, createMe, updateMe } from '@/services/api'
+import { Camera, Save, X } from 'lucide-react'
+import { getMe, createMeWithAvatar, updateMeWithAvatar } from '@/services/api'
 import type { Person } from '@/types'
 
 export function MyProfile() {
   const queryClient = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { data: me, isLoading, error } = useQuery({
     queryKey: ['me'],
@@ -42,20 +45,46 @@ export function MyProfile() {
   }, [me])
 
   const createMutation = useMutation({
-    mutationFn: createMe,
+    mutationFn: ({ person, avatar }: { person: Partial<Person>; avatar?: File }) =>
+      createMeWithAvatar(person, avatar),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['me'] })
       setIsEditing(false)
+      setAvatarFile(null)
+      setAvatarPreview(null)
     },
   })
 
   const updateMutation = useMutation({
-    mutationFn: updateMe,
+    mutationFn: ({ person, avatar }: { person: Partial<Person>; avatar?: File }) =>
+      updateMeWithAvatar(person, avatar),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['me'] })
       setIsEditing(false)
+      setAvatarFile(null)
+      setAvatarPreview(null)
     },
   })
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setAvatarFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const clearAvatarSelection = () => {
+    setAvatarFile(null)
+    setAvatarPreview(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -64,9 +93,9 @@ export function MyProfile() {
       birthday: formData.birthday || null,
     }
     if (needsSetup) {
-      createMutation.mutate(data as Partial<Person>)
+      createMutation.mutate({ person: data as Partial<Person>, avatar: avatarFile || undefined })
     } else {
-      updateMutation.mutate(data as Partial<Person>)
+      updateMutation.mutate({ person: data as Partial<Person>, avatar: avatarFile || undefined })
     }
   }
 
@@ -78,11 +107,47 @@ export function MyProfile() {
 
   // Setup mode or editing mode
   if (needsSetup || isEditing) {
+    // Determine what avatar to show: preview > current > placeholder
+    const displayAvatar = avatarPreview || me?.avatar || null
+
     return (
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
-            <UserCircle className="h-10 w-10 text-primary" />
+          <div className="relative group">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarChange}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden border-2 border-dashed border-primary/30 hover:border-primary/60 transition-colors"
+            >
+              {displayAvatar ? (
+                <img
+                  src={displayAvatar}
+                  alt="Avatar"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <Camera className="h-8 w-8 text-primary/60" />
+              )}
+            </button>
+            <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity pointer-events-none">
+              <Camera className="h-6 w-6 text-white" />
+            </div>
+            {avatarPreview && (
+              <button
+                type="button"
+                onClick={clearAvatarSelection}
+                className="absolute -top-1 -right-1 h-6 w-6 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center hover:bg-destructive/90"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
           <div>
             <h2 className="text-2xl font-bold">
@@ -92,6 +157,9 @@ export function MyProfile() {
               {needsSetup
                 ? 'Create your profile to start tracking relationships'
                 : 'Update your personal information'}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Click the avatar to upload a photo
             </p>
           </div>
         </div>
@@ -212,9 +280,17 @@ export function MyProfile() {
     <div className="max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
-          <div className="h-16 w-16 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-2xl font-semibold">
-            {me?.first_name?.charAt(0).toUpperCase()}
-          </div>
+          {me?.avatar ? (
+            <img
+              src={me.avatar}
+              alt={me.full_name}
+              className="h-16 w-16 rounded-full object-cover"
+            />
+          ) : (
+            <div className="h-16 w-16 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-2xl font-semibold">
+              {me?.first_name?.charAt(0).toUpperCase()}
+            </div>
+          )}
           <div>
             <h2 className="text-2xl font-bold">{me?.full_name}</h2>
             {me?.nickname && (

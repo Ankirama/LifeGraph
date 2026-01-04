@@ -303,6 +303,58 @@ export const updateMe = async (person: Partial<Person>): Promise<Person> => {
   return data
 }
 
+export const updateMeWithAvatar = async (
+  person: Partial<Person>,
+  avatarFile?: File
+): Promise<Person> => {
+  const formData = new FormData()
+
+  // Add all person fields to FormData
+  Object.entries(person).forEach(([key, value]) => {
+    if (value !== null && value !== undefined && value !== '') {
+      formData.append(key, String(value))
+    }
+  })
+
+  // Add avatar file if provided
+  if (avatarFile) {
+    formData.append('avatar', avatarFile)
+  }
+
+  const { data } = await api.patch('/me/', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+  return data
+}
+
+export const createMeWithAvatar = async (
+  person: Partial<Person>,
+  avatarFile?: File
+): Promise<Person> => {
+  const formData = new FormData()
+
+  // Add all person fields to FormData
+  Object.entries(person).forEach(([key, value]) => {
+    if (value !== null && value !== undefined && value !== '') {
+      formData.append(key, String(value))
+    }
+  })
+
+  // Add avatar file if provided
+  if (avatarFile) {
+    formData.append('avatar', avatarFile)
+  }
+
+  const { data } = await api.post('/me/', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+  return data
+}
+
 // Search
 export const globalSearch = async (
   query: string
