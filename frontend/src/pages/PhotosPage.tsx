@@ -5,9 +5,11 @@ import { Plus, Image, Calendar, MapPin, User, X, ChevronLeft, ChevronRight } fro
 import { getPhotos } from '@/services/api'
 import { format } from 'date-fns'
 import type { Photo } from '@/types'
+import { PhotoUpload } from '@/components/PhotoUpload'
 
 export function PhotosPage() {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null)
+  const [isUploadOpen, setIsUploadOpen] = useState(false)
 
   const { data: photosResponse, isLoading } = useQuery({
     queryKey: ['photos'],
@@ -48,7 +50,10 @@ export function PhotosPage() {
             Browse all photos across your contacts
           </p>
         </div>
-        <button className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90">
+        <button
+          onClick={() => setIsUploadOpen(true)}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
+        >
           <Plus className="h-4 w-4" />
           Upload Photo
         </button>
@@ -64,7 +69,10 @@ export function PhotosPage() {
           <p className="text-muted-foreground mb-4">
             Upload photos to remember moments with the people in your life
           </p>
-          <button className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90">
+          <button
+            onClick={() => setIsUploadOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
+          >
             <Plus className="h-4 w-4" />
             Upload your first photo
           </button>
@@ -212,6 +220,12 @@ export function PhotosPage() {
           </div>
         </div>
       )}
+
+      {/* Photo Upload Modal */}
+      <PhotoUpload
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+      />
     </div>
   )
 }
