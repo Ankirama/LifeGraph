@@ -8,6 +8,7 @@ from .ai_parser import (
     generate_photo_description,
     parse_contacts_text,
     parse_updates_text,
+    suggest_relationships,
     suggest_tags_for_person,
 )
 from .linkedin import (
@@ -23,6 +24,7 @@ __all__ = [
     "generate_photo_description",
     "parse_contacts_text",
     "parse_updates_text",
+    "suggest_relationships",
     "suggest_tags_for_person",
     # LinkedIn Services
     "extract_username_from_url",

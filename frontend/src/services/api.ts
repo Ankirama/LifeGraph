@@ -605,4 +605,49 @@ export const getRelationshipGraph = async (params?: {
   return data
 }
 
+// AI Relationship Suggestions
+export interface RelationshipSuggestion {
+  person1_id: string
+  person1_name: string
+  person2_id: string
+  person2_name: string
+  suggested_type: string
+  confidence: number
+  reason: string
+  evidence: string[]
+}
+
+export interface SuggestRelationshipsResponse {
+  suggestions: RelationshipSuggestion[]
+  total_contacts: number
+  existing_relationships_count: number
+  message?: string
+}
+
+export interface ApplyRelationshipSuggestionResponse {
+  id: string
+  person1: string
+  person2: string
+  relationship_type: string
+  message: string
+}
+
+export const suggestRelationships = async (): Promise<SuggestRelationshipsResponse> => {
+  const { data } = await api.get('/ai/suggest-relationships/')
+  return data
+}
+
+export const applyRelationshipSuggestion = async (
+  person1Id: string,
+  person2Id: string,
+  relationshipType: string
+): Promise<ApplyRelationshipSuggestionResponse> => {
+  const { data } = await api.post('/ai/apply-relationship-suggestion/', {
+    person1_id: person1Id,
+    person2_id: person2Id,
+    relationship_type: relationshipType,
+  })
+  return data
+}
+
 export default api

@@ -31,6 +31,8 @@ urlpatterns = [
     path("ai/parse-updates/", views.AIParseUpdatesView.as_view(), name="ai-parse-updates"),
     path("ai/apply-updates/", views.AIApplyUpdatesView.as_view(), name="ai-apply-updates"),
     path("ai/chat/", views.AIChatView.as_view(), name="ai-chat"),
+    path("ai/suggest-relationships/", views.AISuggestRelationshipsView.as_view(), name="ai-suggest-relationships"),
+    path("ai/apply-relationship-suggestion/", views.AIApplyRelationshipSuggestionView.as_view(), name="ai-apply-relationship-suggestion"),
     # Router URLs come last
     path("", include(router.urls)),
 ]

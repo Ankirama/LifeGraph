@@ -8,6 +8,7 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 
+from apps.people.models import Person
 from tests.factories import PersonFactory, PhotoFactory, TagFactory
 
 
@@ -442,3 +443,163 @@ class TestAIChatAPI:
         response = authenticated_client.post(url, {"question": ""}, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+# =============================================================================
+# AI Suggest Relationships Tests
+# =============================================================================
+
+
+@pytest.mark.django_db
+class TestAISuggestRelationshipsAPI:
+    """Tests for AI relationship suggestions endpoint."""
+
+    def test_suggest_relationships_unauthenticated(self, api_client):
+        """Test that unauthenticated requests are rejected."""
+        url = reverse("ai-suggest-relationships")
+
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_suggest_relationships_not_enough_contacts(self, authenticated_client):
+        """Test suggestions with less than 2 contacts (only 1 non-owner person)."""
+        # Clear any existing persons except owner, then create only 1 contact
+        Person.objects.filter(is_owner=False).delete()
+        PersonFactory(is_owner=False)
+
+        url = reverse("ai-suggest-relationships")
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["suggestions"] == []
+        assert "message" in response.data
+        assert "at least 2 contacts" in response.data["message"]
+
+    def test_suggest_relationships_success(self, authenticated_client):
+        """Test successful relationship suggestions."""
+        # Create multiple contacts
+        PersonFactory.create_batch(3, is_owner=False)
+
+        with patch("apps.people.views.suggest_relationships") as mock_suggest:
+            mock_suggest.return_value = [
+                {
+                    "person1_id": "123",
+                    "person1_name": "John",
+                    "person2_id": "456",
+                    "person2_name": "Jane",
+                    "suggested_type": "colleague",
+                    "confidence": 0.85,
+                    "reason": "Both work at the same company",
+                    "evidence": ["Same employer"],
+                }
+            ]
+
+            url = reverse("ai-suggest-relationships")
+            response = authenticated_client.get(url)
+
+            assert response.status_code == status.HTTP_200_OK
+            assert "suggestions" in response.data
+            assert "total_contacts" in response.data
+            mock_suggest.assert_called_once()
+
+
+@pytest.mark.django_db
+class TestAIApplyRelationshipSuggestionAPI:
+    """Tests for applying relationship suggestions."""
+
+    def test_apply_suggestion_unauthenticated(self, api_client):
+        """Test that unauthenticated requests are rejected."""
+        url = reverse("ai-apply-relationship-suggestion")
+
+        response = api_client.post(url, {})
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_apply_suggestion_missing_fields(self, authenticated_client):
+        """Test with missing required fields."""
+        url = reverse("ai-apply-relationship-suggestion")
+        response = authenticated_client.post(url, {}, format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_apply_suggestion_person_not_found(self, authenticated_client):
+        """Test with non-existent person IDs."""
+        import uuid
+
+        url = reverse("ai-apply-relationship-suggestion")
+        data = {
+            "person1_id": str(uuid.uuid4()),
+            "person2_id": str(uuid.uuid4()),
+            "relationship_type": "friend",
+        }
+        response = authenticated_client.post(url, data, format="json")
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_apply_suggestion_invalid_type(self, authenticated_client):
+        """Test with invalid relationship type."""
+        person1 = PersonFactory(is_owner=False)
+        person2 = PersonFactory(is_owner=False)
+
+        url = reverse("ai-apply-relationship-suggestion")
+        data = {
+            "person1_id": str(person1.id),
+            "person2_id": str(person2.id),
+            "relationship_type": "nonexistent_type",
+        }
+        response = authenticated_client.post(url, data, format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_apply_suggestion_success(self, authenticated_client):
+        """Test successful relationship creation from suggestion."""
+        from apps.people.models import RelationshipType
+
+        person1 = PersonFactory(is_owner=False)
+        person2 = PersonFactory(is_owner=False)
+        RelationshipType.objects.get_or_create(
+            name="friend",
+            defaults={"inverse_name": "friend", "is_symmetric": True, "category": "social"}
+        )
+
+        url = reverse("ai-apply-relationship-suggestion")
+        data = {
+            "person1_id": str(person1.id),
+            "person2_id": str(person2.id),
+            "relationship_type": "friend",
+        }
+        response = authenticated_client.post(url, data, format="json")
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert "id" in response.data
+        assert response.data["relationship_type"] == "friend"
+
+    def test_apply_suggestion_duplicate(self, authenticated_client):
+        """Test that duplicate relationships are rejected."""
+        from apps.people.models import Relationship, RelationshipType
+
+        person1 = PersonFactory(is_owner=False)
+        person2 = PersonFactory(is_owner=False)
+        rel_type, _ = RelationshipType.objects.get_or_create(
+            name="friend",
+            defaults={"inverse_name": "friend", "is_symmetric": True, "category": "social"}
+        )
+
+        # Create existing relationship
+        Relationship.objects.create(
+            person_a=person1,
+            person_b=person2,
+            relationship_type=rel_type,
+        )
+
+        url = reverse("ai-apply-relationship-suggestion")
+        data = {
+            "person1_id": str(person1.id),
+            "person2_id": str(person2.id),
+            "relationship_type": "friend",
+        }
+        response = authenticated_client.post(url, data, format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "already exists" in response.data["detail"]

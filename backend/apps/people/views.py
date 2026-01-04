@@ -45,6 +45,7 @@ from .services import (
     generate_photo_description,
     parse_contacts_text,
     parse_updates_text,
+    suggest_relationships,
     suggest_tags_for_person,
     sync_person_from_linkedin,
 )
@@ -1362,3 +1363,185 @@ class AIChatView(APIView):
                 {"detail": f"Chat failed: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class AISuggestRelationshipsView(APIView):
+    """
+    AI-powered relationship suggestions.
+
+    GET: Analyze contacts and suggest potential relationships.
+    Rate limited to prevent abuse of expensive AI operations.
+    """
+
+    @method_decorator(ai_ratelimit())
+    def get(self, request):
+        # Get all active persons (excluding owner)
+        owner = Person.objects.filter(is_owner=True).first()
+        persons = Person.objects.filter(is_active=True, is_owner=False).prefetch_related(
+            "tags", "groups", "employments"
+        )
+
+        if persons.count() < 2:
+            return Response({
+                "suggestions": [],
+                "message": "Need at least 2 contacts to suggest relationships.",
+            })
+
+        # Build persons data
+        persons_data = []
+        for person in persons:
+            current_emp = person.employments.filter(is_current=True).first()
+            persons_data.append({
+                "id": str(person.id),
+                "full_name": person.full_name,
+                "tags": [t.name for t in person.tags.all()],
+                "groups": [g.name for g in person.groups.all()],
+                "current_employment": {
+                    "company": current_emp.company if current_emp else None,
+                    "title": current_emp.title if current_emp else None,
+                } if current_emp else None,
+                "notes": person.notes or "",
+            })
+
+        # Get existing relationships (between contacts, not with owner)
+        existing_relationships = []
+        for rel in Relationship.objects.filter(
+            person_a__is_owner=False,
+            person_b__is_owner=False,
+            person_a__is_active=True,
+            person_b__is_active=True,
+        ).select_related("relationship_type", "person_a", "person_b"):
+            existing_relationships.append({
+                "person1_id": str(rel.person_a_id),
+                "person1_name": rel.person_a.full_name,
+                "person2_id": str(rel.person_b_id),
+                "person2_name": rel.person_b.full_name,
+                "type": rel.relationship_type.name,
+            })
+
+        # Build shared contexts
+        shared_contexts = {
+            "photo_coappearances": [],
+            "anecdote_comentions": [],
+        }
+
+        # Find photo co-appearances
+        from collections import defaultdict
+        photo_people = defaultdict(set)
+        for photo in Photo.objects.prefetch_related("persons"):
+            person_ids = [(str(p.id), p.full_name) for p in photo.persons.filter(is_owner=False)]
+            if len(person_ids) > 1:
+                for i, (p1_id, p1_name) in enumerate(person_ids):
+                    for p2_id, p2_name in person_ids[i+1:]:
+                        key = tuple(sorted([p1_id, p2_id]))
+                        photo_people[key].add(photo.id)
+
+        for (p1_id, p2_id), photos in photo_people.items():
+            # Get names
+            p1 = next((p for p in persons_data if p["id"] == p1_id), None)
+            p2 = next((p for p in persons_data if p["id"] == p2_id), None)
+            if p1 and p2:
+                shared_contexts["photo_coappearances"].append(
+                    (p1_id, p1["full_name"], p2_id, p2["full_name"], len(photos))
+                )
+
+        # Find anecdote co-mentions
+        anecdote_people = defaultdict(set)
+        for anecdote in Anecdote.objects.prefetch_related("persons"):
+            person_ids = [(str(p.id), p.full_name) for p in anecdote.persons.filter(is_owner=False)]
+            if len(person_ids) > 1:
+                for i, (p1_id, p1_name) in enumerate(person_ids):
+                    for p2_id, p2_name in person_ids[i+1:]:
+                        key = tuple(sorted([p1_id, p2_id]))
+                        anecdote_people[key].add(anecdote.id)
+
+        for (p1_id, p2_id), anecdotes in anecdote_people.items():
+            p1 = next((p for p in persons_data if p["id"] == p1_id), None)
+            p2 = next((p for p in persons_data if p["id"] == p2_id), None)
+            if p1 and p2:
+                shared_contexts["anecdote_comentions"].append(
+                    (p1_id, p1["full_name"], p2_id, p2["full_name"], len(anecdotes))
+                )
+
+        try:
+            suggestions = suggest_relationships(
+                persons_data=persons_data,
+                existing_relationships=existing_relationships,
+                shared_contexts=shared_contexts,
+            )
+
+            return Response({
+                "suggestions": suggestions,
+                "total_contacts": len(persons_data),
+                "existing_relationships_count": len(existing_relationships),
+            })
+        except Exception as e:
+            return Response(
+                {"detail": f"Failed to generate suggestions: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class AIApplyRelationshipSuggestionView(APIView):
+    """
+    Apply a relationship suggestion by creating the relationship.
+
+    POST: Create a relationship from a suggestion.
+    """
+
+    def post(self, request):
+        person1_id = request.data.get("person1_id")
+        person2_id = request.data.get("person2_id")
+        relationship_type_name = request.data.get("relationship_type", "").strip().lower()
+
+        if not all([person1_id, person2_id, relationship_type_name]):
+            return Response(
+                {"detail": "person1_id, person2_id, and relationship_type are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate persons exist
+        try:
+            person1 = Person.objects.get(id=person1_id, is_active=True)
+            person2 = Person.objects.get(id=person2_id, is_active=True)
+        except Person.DoesNotExist:
+            return Response(
+                {"detail": "One or both persons not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Validate relationship type exists
+        try:
+            rel_type = RelationshipType.objects.get(name__iexact=relationship_type_name)
+        except RelationshipType.DoesNotExist:
+            return Response(
+                {"detail": f"Relationship type '{relationship_type_name}' not found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check if relationship already exists
+        existing = Relationship.objects.filter(
+            Q(person_a=person1, person_b=person2) |
+            Q(person_a=person2, person_b=person1)
+        ).first()
+
+        if existing:
+            return Response(
+                {"detail": "Relationship already exists between these persons."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Create the relationship
+        relationship = Relationship.objects.create(
+            person_a=person1,
+            person_b=person2,
+            relationship_type=rel_type,
+        )
+
+        return Response({
+            "id": str(relationship.id),
+            "person1": person1.full_name,
+            "person2": person2.full_name,
+            "relationship_type": rel_type.name,
+            "message": f"Created relationship: {person1.full_name} is {rel_type.name} of {person2.full_name}",
+        }, status=status.HTTP_201_CREATED)

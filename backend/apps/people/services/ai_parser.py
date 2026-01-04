@@ -595,6 +595,207 @@ def generate_photo_description(image_url: str, person_context: list[str] | None 
         raise
 
 
+RELATIONSHIP_SUGGESTION_SYSTEM_PROMPT = """You are an assistant that analyzes contacts in a personal CRM to suggest potential relationships between people that might have been missed.
+
+You will be given:
+1. A list of all contacts with their profiles, employment, tags, and groups
+2. Existing relationships in the system
+3. Shared contexts (photos, anecdotes, etc.)
+
+Your task is to identify potential relationships based on:
+1. **Shared workplace**: People working at the same company are likely colleagues
+2. **Shared groups/tags**: People in the same groups or with similar tags may know each other
+3. **Photo co-appearances**: People tagged in the same photos likely have a relationship
+4. **Anecdote co-mentions**: People mentioned together in anecdotes/memories are connected
+5. **Family patterns**: If A is X's sibling and B is X's parent, A and B might be parent/child
+6. **Similar contexts**: Similar "met_context" or overlapping social circles
+
+Return a JSON object with:
+{
+  "suggestions": [
+    {
+      "person1_id": "UUID of first person",
+      "person1_name": "Full name of first person",
+      "person2_id": "UUID of second person",
+      "person2_name": "Full name of second person",
+      "suggested_type": "colleague/friend/sibling/etc. - the relationship type from person1's perspective",
+      "confidence": 0.0 to 1.0,
+      "reason": "Explanation of why this relationship is suggested",
+      "evidence": ["List of specific evidence points"]
+    }
+  ]
+}
+
+Rules:
+1. Only suggest relationships that DON'T already exist in the system
+2. Confidence should reflect how certain you are:
+   - 0.9+: Very strong evidence (same photo + same company + similar notes)
+   - 0.7-0.9: Good evidence (shared company or multiple shared contexts)
+   - 0.5-0.7: Moderate evidence (same group/tag, mentioned together once)
+   - <0.5: Weak evidence (don't include these)
+3. Be specific in reasons - cite actual evidence
+4. For asymmetric relationships, always give the type from person1's perspective
+5. Limit to top 10 most confident suggestions
+6. Don't suggest relationships between the owner and contacts (those should use the import feature)
+
+Respond ONLY with valid JSON, no other text."""
+
+
+def suggest_relationships(
+    persons_data: list[dict[str, Any]],
+    existing_relationships: list[dict[str, Any]],
+    shared_contexts: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """
+    Analyze contacts and suggest potential relationships that might be missing.
+
+    Args:
+        persons_data: List of persons with their profiles, employment, tags, groups
+        existing_relationships: List of existing relationships in the system
+        shared_contexts: Dictionary with:
+            - photo_coappearances: List of (person1_id, person2_id, photo_count) tuples
+            - anecdote_comentions: List of (person1_id, person2_id, anecdote_count) tuples
+
+    Returns:
+        List of relationship suggestions with confidence scores
+    """
+    client = get_openai_client()
+
+    # Build context for the AI
+    context_parts = []
+
+    # Persons section
+    context_parts.append("## All Contacts")
+    for person in persons_data:
+        person_info = f"- ID: {person['id']}, Name: {person['full_name']}"
+        if person.get("tags"):
+            person_info += f", Tags: {', '.join(person['tags'])}"
+        if person.get("groups"):
+            person_info += f", Groups: {', '.join(person['groups'])}"
+        if person.get("current_employment"):
+            emp = person["current_employment"]
+            person_info += f", Works at: {emp.get('company', 'Unknown')}"
+            if emp.get("title"):
+                person_info += f" as {emp['title']}"
+        if person.get("notes"):
+            # Truncate long notes
+            notes = person["notes"][:200] + "..." if len(person.get("notes", "")) > 200 else person.get("notes", "")
+            person_info += f", Notes: {notes}"
+        context_parts.append(person_info)
+
+    # Existing relationships section
+    context_parts.append("\n## Existing Relationships (DO NOT suggest these)")
+    if existing_relationships:
+        for rel in existing_relationships:
+            context_parts.append(
+                f"- {rel['person1_name']} → {rel['type']} → {rel['person2_name']}"
+            )
+    else:
+        context_parts.append("(No existing relationships between contacts)")
+
+    # Shared contexts section
+    context_parts.append("\n## Shared Contexts")
+
+    # Photo co-appearances
+    photo_coappearances = shared_contexts.get("photo_coappearances", [])
+    if photo_coappearances:
+        context_parts.append("### People appearing in same photos:")
+        for p1_id, p1_name, p2_id, p2_name, count in photo_coappearances:
+            context_parts.append(f"- {p1_name} and {p2_name}: {count} photo(s) together")
+    else:
+        context_parts.append("### Photo co-appearances: None")
+
+    # Anecdote co-mentions
+    anecdote_comentions = shared_contexts.get("anecdote_comentions", [])
+    if anecdote_comentions:
+        context_parts.append("### People mentioned in same anecdotes:")
+        for p1_id, p1_name, p2_id, p2_name, count in anecdote_comentions:
+            context_parts.append(f"- {p1_name} and {p2_name}: {count} anecdote(s) together")
+    else:
+        context_parts.append("### Anecdote co-mentions: None")
+
+    # Same company detection (pre-processed for AI)
+    context_parts.append("### People at the same company:")
+    companies: dict[str, list[tuple[str, str]]] = {}
+    for person in persons_data:
+        emp = person.get("current_employment", {})
+        if emp and emp.get("company"):
+            company = emp["company"].lower().strip()
+            if company not in companies:
+                companies[company] = []
+            companies[company].append((person["id"], person["full_name"]))
+
+    company_pairs_found = False
+    for company, people in companies.items():
+        if len(people) > 1:
+            company_pairs_found = True
+            names = [p[1] for p in people]
+            context_parts.append(f"- {company.title()}: {', '.join(names)}")
+
+    if not company_pairs_found:
+        context_parts.append("- None detected")
+
+    context = "\n".join(context_parts)
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": RELATIONSHIP_SUGGESTION_SYSTEM_PROMPT},
+                {"role": "user", "content": f"Please analyze these contacts and suggest potential relationships:\n\n{context}"},
+            ],
+            temperature=0.3,  # Lower temperature for more consistent analysis
+            response_format={"type": "json_object"},
+        )
+
+        content = response.choices[0].message.content
+        result = json.loads(content)
+
+        # Validate and clean suggestions
+        suggestions = []
+        existing_pairs = set()
+        for rel in existing_relationships:
+            existing_pairs.add((rel["person1_id"], rel["person2_id"]))
+            existing_pairs.add((rel["person2_id"], rel["person1_id"]))
+
+        for suggestion in result.get("suggestions", []):
+            # Validate required fields
+            if not all(k in suggestion for k in ["person1_id", "person2_id", "suggested_type", "confidence"]):
+                continue
+
+            # Skip if relationship already exists
+            pair = (suggestion["person1_id"], suggestion["person2_id"])
+            if pair in existing_pairs:
+                continue
+
+            # Skip low confidence
+            confidence = float(suggestion.get("confidence", 0))
+            if confidence < 0.5:
+                continue
+
+            suggestions.append({
+                "person1_id": suggestion["person1_id"],
+                "person1_name": suggestion.get("person1_name", "Unknown"),
+                "person2_id": suggestion["person2_id"],
+                "person2_name": suggestion.get("person2_name", "Unknown"),
+                "suggested_type": suggestion["suggested_type"].lower().strip(),
+                "confidence": confidence,
+                "reason": suggestion.get("reason", ""),
+                "evidence": suggestion.get("evidence", []),
+            })
+
+        # Sort by confidence and limit
+        suggestions.sort(key=lambda x: x["confidence"], reverse=True)
+        return suggestions[:10]
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse OpenAI response as JSON: {e}")
+        raise ValueError("Failed to parse AI response")
+    except Exception as e:
+        logger.error(f"OpenAI API error suggesting relationships: {e}")
+        raise
+
+
 CHAT_SYSTEM_PROMPT = """You are a helpful assistant for a personal CRM called LifeGraph. You help the user remember information about the people in their life.
 
 You have access to the user's contact database. Answer questions about:
