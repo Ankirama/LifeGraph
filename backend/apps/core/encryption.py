@@ -5,13 +5,71 @@ Uses Fernet symmetric encryption (AES-128-CBC with HMAC) for field-level
 encryption of sensitive personal data at rest.
 """
 
+import json
+
 from django.conf import settings
 from encrypted_fields.fields import (
     EncryptedCharField,
     EncryptedEmailField,
-    EncryptedJSONField,
+    EncryptedFieldMixin,
     EncryptedTextField,
 )
+from django.db import models
+
+
+class EncryptedJSONField(EncryptedFieldMixin, models.TextField):
+    """
+    Encrypted JSON field that stores JSON data with encryption at rest.
+    Uses TextField base with encryption mixin to store as bytea.
+    """
+
+    def get_internal_type(self):
+        return "BinaryField"
+
+    def from_db_value(self, value, expression, connection):
+        if value is None:
+            return None
+        # Database returns bytes (bytea), convert to string for Fernet
+        if isinstance(value, bytes):
+            value = value.decode("utf-8")
+        # Decrypt using the Fernet instance directly
+        try:
+            decrypted = self.f.decrypt(bytes(value, "utf-8")).decode("utf-8")
+        except Exception:
+            return None
+        # Parse JSON
+        try:
+            return json.loads(decrypted)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    def get_prep_value(self, value):
+        if value is None:
+            return None
+        # Convert to JSON string and encrypt directly
+        # (bypasses super chain which calls to_python and breaks empty containers)
+        json_str = json.dumps(value, default=str)
+        return self.f.encrypt(bytes(json_str, "utf-8")).decode("utf-8")
+
+    def to_python(self, value):
+        """Handle form data and other Python-side conversions."""
+        if value is None:
+            return None
+        if isinstance(value, (dict, list)):
+            return value
+        if isinstance(value, str):
+            # Try parsing as plain JSON first (form input, fixtures)
+            try:
+                return json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                pass
+            # Try decrypting (could be encrypted data)
+            try:
+                decrypted = self.f.decrypt(bytes(value, "utf-8")).decode("utf-8")
+                return json.loads(decrypted)
+            except Exception:
+                return None
+        return None
 
 # Re-export encrypted field types for consistent usage across models
 __all__ = [

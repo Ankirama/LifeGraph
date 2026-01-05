@@ -121,6 +121,11 @@ class PersonDetailSerializer(serializers.ModelSerializer):
         required=False,
     )
 
+    # Encrypted JSON fields need explicit JSONField serializers
+    emails = serializers.JSONField(required=False, default=list)
+    phones = serializers.JSONField(required=False, default=list)
+    addresses = serializers.JSONField(required=False, default=list)
+
     class Meta:
         model = Person
         fields = [
@@ -178,6 +183,11 @@ class PersonCreateUpdateSerializer(serializers.ModelSerializer):
     linkedin_url = serializers.CharField(required=False, allow_blank=True, default="")
     discord_id = serializers.CharField(required=False, allow_blank=True, default="")
     notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+    # Encrypted JSON fields need explicit JSONField serializers
+    emails = serializers.JSONField(required=False, default=list)
+    phones = serializers.JSONField(required=False, default=list)
+    addresses = serializers.JSONField(required=False, default=list)
 
     tag_ids = serializers.ListField(
         child=serializers.UUIDField(),

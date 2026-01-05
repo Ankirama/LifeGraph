@@ -31,7 +31,7 @@ class TestPersonGenerateSummaryAPI:
 
     def test_generate_summary_success(self, authenticated_client, person):
         """Test successful summary generation."""
-        with patch("apps.people.views.generate_person_summary") as mock_gen:
+        with patch("apps.people.views.person.generate_person_summary") as mock_gen:
             mock_gen.return_value = "This is an AI-generated summary."
 
             url = reverse("person-generate-summary", kwargs={"pk": person.pk})
@@ -75,7 +75,7 @@ class TestPersonSuggestTagsAPI:
         TagFactory(name="Developer")
         TagFactory(name="Manager")
 
-        with patch("apps.people.views.suggest_tags_for_person") as mock_suggest:
+        with patch("apps.people.views.person.suggest_tags_for_person") as mock_suggest:
             mock_suggest.return_value = {
                 "suggestions": [
                     {"tag_id": "uuid1", "tag_name": "Developer", "confidence": 0.9},
@@ -187,7 +187,7 @@ class TestPersonSyncLinkedInAPI:
         person.linkedin_url = "https://linkedin.com/in/johndoe"
         person.save()
 
-        with patch("apps.people.views.sync_person_from_linkedin") as mock_sync:
+        with patch("apps.people.views.person.sync_person_from_linkedin") as mock_sync:
             mock_sync.return_value = {
                 "synced_count": 2,
                 "skipped_count": 1,
@@ -225,7 +225,7 @@ class TestPhotoGenerateDescriptionAPI:
         """Test successful description generation."""
         photo = PhotoFactory()
 
-        with patch("apps.people.views.generate_photo_description") as mock_gen:
+        with patch("apps.people.views.photo.generate_photo_description") as mock_gen:
             mock_gen.return_value = "A beautiful photo description."
 
             url = reverse("photo-generate-description", kwargs={"pk": photo.pk})
@@ -255,7 +255,7 @@ class TestAIParseContactsAPI:
 
     def test_parse_contacts_success(self, authenticated_client):
         """Test successful contact parsing."""
-        with patch("apps.people.views.parse_contacts_text") as mock_parse:
+        with patch("apps.people.views.ai.parse_contacts_text") as mock_parse:
             mock_parse.return_value = {
                 "contacts": [
                     {"first_name": "John", "last_name": "Doe", "email": "john@example.com"}
@@ -346,7 +346,7 @@ class TestAIParseUpdatesAPI:
 
     def test_parse_updates_success(self, authenticated_client, person):
         """Test successful update parsing."""
-        with patch("apps.people.views.parse_updates_text") as mock_parse:
+        with patch("apps.people.views.ai.parse_updates_text") as mock_parse:
             mock_parse.return_value = {
                 "updates": [
                     {
@@ -423,7 +423,7 @@ class TestAIChatAPI:
 
     def test_chat_success(self, authenticated_client):
         """Test successful chat interaction."""
-        with patch("apps.people.views.chat_with_context") as mock_chat:
+        with patch("apps.people.views.ai.chat_with_context") as mock_chat:
             mock_chat.return_value = "Hello! How can I help you today?"
 
             url = reverse("ai-chat")
@@ -481,7 +481,7 @@ class TestAISuggestRelationshipsAPI:
         # Create multiple contacts
         PersonFactory.create_batch(3, is_owner=False)
 
-        with patch("apps.people.views.suggest_relationships") as mock_suggest:
+        with patch("apps.people.views.ai.suggest_relationships") as mock_suggest:
             mock_suggest.return_value = [
                 {
                     "person1_id": "123",
@@ -642,7 +642,7 @@ class TestAISmartSearchAPI:
         PersonFactory(first_name="John", last_name="Doe", is_owner=False)
         PersonFactory(first_name="Jane", last_name="Smith", is_owner=False)
 
-        with patch("apps.people.views.smart_search") as mock_smart_search:
+        with patch("apps.people.views.ai.smart_search") as mock_smart_search:
             mock_smart_search.return_value = {
                 "search_type": "person",
                 "intent": "Find people named John",
@@ -677,7 +677,7 @@ class TestAISmartSearchAPI:
             is_current=True,
         )
 
-        with patch("apps.people.views.smart_search") as mock_smart_search:
+        with patch("apps.people.views.ai.smart_search") as mock_smart_search:
             mock_smart_search.return_value = {
                 "search_type": "person",
                 "intent": "Find people who work at Google",
@@ -710,7 +710,7 @@ class TestAISmartSearchAPI:
             location="Paris",
         )
 
-        with patch("apps.people.views.smart_search") as mock_smart_search:
+        with patch("apps.people.views.ai.smart_search") as mock_smart_search:
             mock_smart_search.return_value = {
                 "search_type": "anecdote",
                 "intent": "Find memories from Paris",
@@ -732,7 +732,7 @@ class TestAISmartSearchAPI:
 
     def test_smart_search_no_results(self, authenticated_client, without_rate_limit):
         """Test smart search with no matching results."""
-        with patch("apps.people.views.smart_search") as mock_smart_search:
+        with patch("apps.people.views.ai.smart_search") as mock_smart_search:
             mock_smart_search.return_value = {
                 "search_type": "person",
                 "intent": "Find nonexistent person",

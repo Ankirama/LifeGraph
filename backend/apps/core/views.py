@@ -47,7 +47,13 @@ class GroupViewSet(viewsets.ModelViewSet):
 
 
 class GlobalSearchView(APIView):
-    """Global search across persons and anecdotes."""
+    """
+    Global search across persons and anecdotes.
+
+    Note: The full implementation is in apps.people.views.GlobalSearchView
+    which uses PostgreSQL full-text search. This view is kept for potential
+    future use as an alternative/fallback search endpoint.
+    """
 
     def get(self, request):
         query = request.query_params.get("q", "").strip()
@@ -57,10 +63,10 @@ class GlobalSearchView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # TODO: Implement search across persons and anecdotes
         results = {
             "persons": [],
             "anecdotes": [],
+            "employments": [],
             "query": query,
         }
         return Response(results)

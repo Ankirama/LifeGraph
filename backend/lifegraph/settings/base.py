@@ -233,3 +233,12 @@ FERNET_KEYS = env.list("FERNET_KEYS", default=[])
 # Generate key with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 _default_salt_key = "nPeVr-3q4Yi7VAoKjDXtpg5zg9DIhzj9JaMZxutwrHI="
 SALT_KEY = env("SALT_KEY", default=FERNET_KEYS[0] if FERNET_KEYS else _default_salt_key)
+
+# FIELD_ENCRYPTION_KEYS for django-searchable-encrypted-fields library
+# Key must be 32 bytes (64 hex characters)
+# Generate key with: python -c "import secrets; print(secrets.token_hex(32))"
+_default_encryption_key = "0" * 64  # Development-only default (all zeros)
+FIELD_ENCRYPTION_KEYS = env.list(
+    "FIELD_ENCRYPTION_KEYS",
+    default=[_default_encryption_key]
+)
