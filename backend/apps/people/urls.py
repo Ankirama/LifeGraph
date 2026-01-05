@@ -34,6 +34,9 @@ urlpatterns = [
     path("ai/suggest-relationships/", views.AISuggestRelationshipsView.as_view(), name="ai-suggest-relationships"),
     path("ai/apply-relationship-suggestion/", views.AIApplyRelationshipSuggestionView.as_view(), name="ai-apply-relationship-suggestion"),
     path("ai/smart-search/", views.AISmartSearchView.as_view(), name="ai-smart-search"),
+    # Export endpoints
+    path("export/", views.ExportDataView.as_view(), name="export-data"),
+    path("export/preview/", views.ExportPreviewView.as_view(), name="export-preview"),
     # Router URLs come last
     path("", include(router.urls)),
 ]

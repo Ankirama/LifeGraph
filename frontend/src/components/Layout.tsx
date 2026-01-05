@@ -13,6 +13,7 @@ import {
   UserCircle,
   MessageSquare,
   Sparkles,
+  Download,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { GlobalSearch } from './GlobalSearch'
@@ -29,6 +30,7 @@ const navigation = [
   { name: 'Photos', href: '/photos', icon: Image },
   { name: 'Groups', href: '/groups', icon: FolderTree },
   { name: 'Tags', href: '/tags', icon: Tags },
+  { name: 'Export', href: '/export', icon: Download },
   { name: 'My Profile', href: '/me', icon: UserCircle },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]

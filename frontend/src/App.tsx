@@ -12,6 +12,7 @@ import { GraphPage } from '@/pages/GraphPage'
 import { MyProfile } from '@/pages/MyProfile'
 import { ChatPage } from '@/pages/ChatPage'
 import { SmartSearchPage } from '@/pages/SmartSearchPage'
+import { ExportPage } from '@/pages/ExportPage'
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
         <Route path="photos" element={<PhotosPage />} />
         <Route path="groups" element={<GroupsPage />} />
         <Route path="tags" element={<TagsPage />} />
+        <Route path="export" element={<ExportPage />} />
         <Route path="me" element={<MyProfile />} />
       </Route>
     </Routes>

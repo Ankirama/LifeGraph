@@ -698,4 +698,76 @@ export const smartSearch = async (query: string): Promise<SmartSearchResponse> =
   return data
 }
 
+// Export
+export interface ExportPreviewResponse {
+  export_type?: 'full'
+  entity_type?: string
+  count?: number
+  counts?: {
+    persons: number
+    relationships: number
+    relationship_types: number
+    anecdotes: number
+    photos: number
+    tags: number
+    groups: number
+  }
+  total_items?: number
+  available_formats:
+    | {
+        json: {
+          full_export: boolean
+          entity_types: string[]
+        }
+        csv: {
+          full_export: boolean
+          entity_types: string[]
+        }
+      }
+    | string[]
+}
+
+export const getExportPreview = async (
+  entityType?: string
+): Promise<ExportPreviewResponse> => {
+  const params = entityType ? { entity: entityType } : {}
+  const { data } = await api.get('/export/preview/', { params })
+  return data
+}
+
+export const downloadExport = async (
+  format: 'json' | 'csv',
+  entityType?: string
+): Promise<void> => {
+  const params: Record<string, string> = { export_format: format }
+  if (entityType) {
+    params.entity = entityType
+  }
+
+  const response = await api.get('/export/', {
+    params,
+    responseType: 'blob',
+  })
+
+  // Extract filename from Content-Disposition header
+  const contentDisposition = response.headers['content-disposition']
+  let filename = `lifegraph_export.${format}`
+  if (contentDisposition) {
+    const matches = contentDisposition.match(/filename="(.+)"/)
+    if (matches && matches[1]) {
+      filename = matches[1]
+    }
+  }
+
+  // Create download link
+  const url = window.URL.createObjectURL(new Blob([response.data]))
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', filename)
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
 export default api
