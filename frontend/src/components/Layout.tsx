@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Sparkles,
   Download,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { GlobalSearch } from './GlobalSearch'
@@ -44,6 +45,11 @@ export function Layout() {
     retry: false,
     staleTime: 1000 * 60 * 5, // 5 minutes
   })
+
+  const handleLogout = () => {
+    // Redirect to Django logout which will clear the session
+    window.location.href = '/accounts/logout/'
+  }
 
   return (
     <div className="flex h-screen bg-background">
@@ -81,7 +87,7 @@ export function Layout() {
           <div className="flex items-center gap-4 flex-1">
             <GlobalSearch />
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <Link
               to="/me"
               className="flex items-center gap-2 hover:bg-accent rounded-md px-2 py-1 transition-colors"
@@ -93,6 +99,13 @@ export function Layout() {
                 <span className="text-sm font-medium">{me.full_name}</span>
               )}
             </Link>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 hover:bg-accent rounded-md px-2 py-2 transition-colors text-muted-foreground hover:text-foreground"
+              title="Logout"
+            >
+              <LogOut className="h-5 w-5" />
+            </button>
           </div>
         </header>
 
