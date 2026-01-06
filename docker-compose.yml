@@ -164,6 +164,25 @@ services:
       - backend
     command: npm run dev -- --host
 
+  # E2E Tests with Playwright
+  e2e:
+    build:
+      context: ./e2e
+      dockerfile: Dockerfile
+    environment:
+      - E2E_BASE_URL=http://frontend:5173
+      - E2E_TEST_EMAIL=${E2E_TEST_EMAIL:-test@example.com}
+      - E2E_TEST_PASSWORD=${E2E_TEST_PASSWORD:-testpass123}
+    volumes:
+      - ./e2e:/e2e
+      - /e2e/node_modules
+    depends_on:
+      - frontend
+      - backend
+    profiles:
+      - testing
+    command: npm test
+
 volumes:
   postgres_data:
   redis_data:

@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Test outputs
+test-results/
+playwright-report/
+.auth/
+
+# Coverage
+coverage/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
