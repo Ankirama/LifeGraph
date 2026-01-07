@@ -1,9 +1,19 @@
 """
 LinkedIn integration service for fetching profile data.
 
-WARNING: This uses the unofficial linkedin-api library which scrapes LinkedIn.
-Use sparingly to avoid rate limiting or account restrictions.
-Requires LINKEDIN_EMAIL and LINKEDIN_PASSWORD environment variables.
+SECURITY WARNING: This uses the unofficial linkedin-api library which scrapes LinkedIn.
+
+Important security considerations:
+- Use a DEDICATED LinkedIn account, never your personal account
+- The account may be restricted or banned by LinkedIn for scraping
+- Enable LINKEDIN_ENABLED only when actively needed
+- Consider using LinkedIn's official API for production use cases
+- Credentials are stored in environment variables - use a secrets manager in production
+
+Requires:
+- LINKEDIN_ENABLED=true
+- LINKEDIN_EMAIL (dedicated account email)
+- LINKEDIN_PASSWORD (dedicated account password)
 """
 
 import logging
@@ -40,6 +50,14 @@ class LinkedInProfile(TypedDict):
     experiences: list[LinkedInExperience]
 
 
+def is_linkedin_enabled() -> bool:
+    """Check if LinkedIn integration is enabled and configured."""
+    enabled = getattr(settings, "LINKEDIN_ENABLED", False)
+    email = getattr(settings, "LINKEDIN_EMAIL", None)
+    password = getattr(settings, "LINKEDIN_PASSWORD", None)
+    return enabled and bool(email) and bool(password)
+
+
 def get_linkedin_client():
     """
     Get an authenticated LinkedIn API client.
@@ -48,10 +66,17 @@ def get_linkedin_client():
         Linkedin: Authenticated client
 
     Raises:
-        ValueError: If credentials are not configured
+        ValueError: If LinkedIn integration is disabled or credentials are not configured
         Exception: If authentication fails
     """
     from linkedin_api import Linkedin
+
+    # Check if integration is enabled
+    if not getattr(settings, "LINKEDIN_ENABLED", False):
+        raise ValueError(
+            "LinkedIn integration is disabled. "
+            "Set LINKEDIN_ENABLED=true in environment to enable."
+        )
 
     email = getattr(settings, "LINKEDIN_EMAIL", None)
     password = getattr(settings, "LINKEDIN_PASSWORD", None)
@@ -63,12 +88,14 @@ def get_linkedin_client():
         )
 
     try:
+        # Note: Never log credentials - only log success/failure
         client = Linkedin(email, password)
         logger.info("LinkedIn client authenticated successfully")
         return client
     except Exception as e:
-        logger.error(f"LinkedIn authentication failed: {e}")
-        raise
+        # Don't log the full exception which might contain credentials
+        logger.error("LinkedIn authentication failed - check credentials and account status")
+        raise ValueError("LinkedIn authentication failed") from e
 
 
 def extract_username_from_url(linkedin_url: str) -> str | None:

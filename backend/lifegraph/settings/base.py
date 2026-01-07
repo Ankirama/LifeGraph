@@ -179,6 +179,7 @@ ACCOUNT_ADAPTER = "apps.core.adapters.NoNewUsersAccountAdapter"
 # MFA Configuration
 MFA_REQUIRE_REAUTH = False  # Don't require re-authentication for MFA setup
 OTP_TOTP_ISSUER = "LifeGraph"
+MFA_REQUIRED = env.bool("MFA_REQUIRED", default=False)  # Enforce MFA for all users
 
 # OAuth2 / OpenID Connect (Authentik)
 SOCIALACCOUNT_PROVIDERS = {
@@ -208,7 +209,12 @@ AUDITLOG_INCLUDE_TRACKING_MODELS = (
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 
 # LinkedIn Integration
-# WARNING: Uses unofficial API. Use sparingly to avoid account restrictions.
+# SECURITY WARNING: Uses unofficial API with account credentials.
+# - Use a dedicated LinkedIn account, NOT your personal account
+# - Use sparingly to avoid account restrictions/bans
+# - Credentials should ideally be stored in a secrets manager
+# - Enable LINKEDIN_ENABLED only when needed
+LINKEDIN_ENABLED = env.bool("LINKEDIN_ENABLED", default=False)
 LINKEDIN_EMAIL = env("LINKEDIN_EMAIL", default="")
 LINKEDIN_PASSWORD = env("LINKEDIN_PASSWORD", default="")
 

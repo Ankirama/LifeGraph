@@ -8,6 +8,7 @@ from django.db import models
 
 from apps.core.encryption import EncryptedJSONField, EncryptedTextField
 from apps.core.models import BaseModel, Group, Tag
+from apps.core.validators import validate_avatar, validate_photo
 
 
 class Person(BaseModel):
@@ -19,7 +20,11 @@ class Person(BaseModel):
     first_name = models.CharField(max_length=150)
     last_name = models.CharField(max_length=150, blank=True, default="")
     nickname = models.CharField(max_length=100, blank=True, default="")
-    avatar = models.ImageField(upload_to="avatars/", blank=True)
+    avatar = models.ImageField(
+        upload_to="avatars/",
+        blank=True,
+        validators=[validate_avatar],
+    )
 
     # Dates
     birthday = models.DateField(null=True, blank=True)
@@ -306,7 +311,10 @@ class Photo(BaseModel):
     Photos associated with persons.
     """
 
-    file = models.FileField(upload_to="photos/%Y/%m/")
+    file = models.FileField(
+        upload_to="photos/%Y/%m/",
+        validators=[validate_photo],
+    )
     caption = models.CharField(max_length=500, blank=True)
 
     # Metadata

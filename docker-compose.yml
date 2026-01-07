@@ -6,7 +6,8 @@ services:
     environment:
       POSTGRES_DB: lifegraph
       POSTGRES_USER: lifegraph
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-lifegraph}
+      # SECURITY: DB_PASSWORD must be set in .env file (no weak default)
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -39,8 +40,9 @@ services:
     restart: unless-stopped
     environment:
       - DEBUG=True
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
-      - DATABASE_URL=postgresql://lifegraph:${DB_PASSWORD:-lifegraph}@db:5432/lifegraph
+      # SECURITY: SECRET_KEY and DB_PASSWORD must be set in .env file
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
+      - DATABASE_URL=postgresql://lifegraph:${DB_PASSWORD:?DB_PASSWORD required}@db:5432/lifegraph
       - REDIS_URL=redis://redis:6379/0
       - ALLOWED_HOSTS=localhost,127.0.0.1,backend
       - OAUTH2_CLIENT_ID=${OAUTH2_CLIENT_ID:-}
@@ -78,8 +80,8 @@ services:
     restart: unless-stopped
     environment:
       - DEBUG=True
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
-      - DATABASE_URL=postgresql://lifegraph:${DB_PASSWORD:-lifegraph}@db:5432/lifegraph
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
+      - DATABASE_URL=postgresql://lifegraph:${DB_PASSWORD:?DB_PASSWORD required}@db:5432/lifegraph
       - REDIS_URL=redis://redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - LINKEDIN_EMAIL=${LINKEDIN_EMAIL:-}
@@ -101,8 +103,8 @@ services:
     restart: unless-stopped
     environment:
       - DEBUG=True
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
-      - DATABASE_URL=postgresql://lifegraph:${DB_PASSWORD:-lifegraph}@db:5432/lifegraph
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
+      - DATABASE_URL=postgresql://lifegraph:${DB_PASSWORD:?DB_PASSWORD required}@db:5432/lifegraph
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./backend:/app
@@ -119,8 +121,9 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+      # SECURITY: MinIO credentials must be set in .env file (no weak defaults)
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY must be set in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY must be set in .env}
     volumes:
       - minio_data:/data
     ports:
@@ -138,9 +141,12 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY must be set in .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY must be set in .env}
     entrypoint: >
       /bin/sh -c "
-      mc alias set myminio http://minio:9000 $${MINIO_ACCESS_KEY:-minioadmin} $${MINIO_SECRET_KEY:-minioadmin};
+      mc alias set myminio http://minio:9000 $${MINIO_ACCESS_KEY} $${MINIO_SECRET_KEY};
       mc mb --ignore-existing myminio/lifegraph;
       mc anonymous set none myminio/lifegraph;
       exit 0;

@@ -5,6 +5,7 @@ People app serializers.
 from rest_framework import serializers
 
 from apps.core.serializers import GroupSerializer, TagSerializer
+from apps.core.validators import validate_avatar, validate_photo
 
 from .models import (
     Anecdote,
@@ -225,6 +226,12 @@ class PersonCreateUpdateSerializer(serializers.ModelSerializer):
             "group_ids",
         ]
         read_only_fields = ["id"]
+
+    def validate_avatar(self, value):
+        """Validate avatar file upload for security."""
+        if value:
+            validate_avatar(value)
+        return value
 
     def create(self, validated_data):
         tag_ids = validated_data.pop("tag_ids", [])
@@ -454,6 +461,12 @@ class PhotoSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def validate_file(self, value):
+        """Validate photo file upload for security."""
+        if value:
+            validate_photo(value)
+        return value
 
     def create(self, validated_data):
         person_ids = validated_data.pop("person_ids", [])
