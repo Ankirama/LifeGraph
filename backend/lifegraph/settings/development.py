@@ -2,9 +2,17 @@
 Development settings for LifeGraph.
 """
 
+import secrets
+
 from .base import *  # noqa: F401, F403
 
 DEBUG = True
+
+# Development-only encryption key (generated at startup if not set)
+# WARNING: This key changes on each restart - data encrypted with it won't be readable after restart
+# For persistent development data, set FIELD_ENCRYPTION_KEYS in your .env file
+if not FIELD_ENCRYPTION_KEYS:  # noqa: F405
+    FIELD_ENCRYPTION_KEYS = [secrets.token_hex(32)]  # noqa: F405
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1", "0.0.0.0"])  # noqa: F405
 
@@ -44,16 +52,22 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"  # noqa: F405
 
-# Disable password validators in development for easier testing
-AUTH_PASSWORD_VALIDATORS = []
+# Use simpler password validation in development (still validates, but less strict)
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 4},  # Shorter minimum for dev convenience
+    },
+]
 
-# Allow unauthenticated API access in development
+# REST Framework - use IsAuthenticated (same as production)
+# Session authentication allows browser-based access after login
 REST_FRAMEWORK = {  # noqa: F405
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.AllowAny",
+        "rest_framework.permissions.IsAuthenticated",
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,

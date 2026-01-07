@@ -44,6 +44,8 @@ THIRD_PARTY_APPS = [
     "allauth.account",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.openid_connect",
+    "django_otp",
+    "django_otp.plugins.otp_totp",
     "django_celery_beat",
     "auditlog",
     "storages",
@@ -64,6 +66,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
@@ -170,6 +173,13 @@ ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_AUTHENTICATION_METHOD = "email"
 ACCOUNT_EMAIL_VERIFICATION = "optional"
 
+# Disable public registration - users can only be created via management command
+ACCOUNT_ADAPTER = "apps.core.adapters.NoNewUsersAccountAdapter"
+
+# MFA Configuration
+MFA_REQUIRE_REAUTH = False  # Don't require re-authentication for MFA setup
+OTP_TOTP_ISSUER = "LifeGraph"
+
 # OAuth2 / OpenID Connect (Authentik)
 SOCIALACCOUNT_PROVIDERS = {
     "openid_connect": {
@@ -237,8 +247,5 @@ SALT_KEY = env("SALT_KEY", default=FERNET_KEYS[0] if FERNET_KEYS else _default_s
 # FIELD_ENCRYPTION_KEYS for django-searchable-encrypted-fields library
 # Key must be 32 bytes (64 hex characters)
 # Generate key with: python -c "import secrets; print(secrets.token_hex(32))"
-_default_encryption_key = "0" * 64  # Development-only default (all zeros)
-FIELD_ENCRYPTION_KEYS = env.list(
-    "FIELD_ENCRYPTION_KEYS",
-    default=[_default_encryption_key]
-)
+# WARNING: No default provided - must be set in environment or development settings
+FIELD_ENCRYPTION_KEYS = env.list("FIELD_ENCRYPTION_KEYS", default=[])
