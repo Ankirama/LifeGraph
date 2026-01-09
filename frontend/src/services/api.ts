@@ -11,6 +11,10 @@ import type {
   Photo,
   Employment,
   RelationshipGraphData,
+  AuthStatus,
+  MFAStatus,
+  MFASetupResponse,
+  MFAVerifyResponse,
 } from '@/types'
 
 const api = axios.create({
@@ -768,6 +772,40 @@ export const downloadExport = async (
   link.click()
   link.remove()
   window.URL.revokeObjectURL(url)
+}
+
+// Auth & MFA
+export const getAuthStatus = async (): Promise<AuthStatus> => {
+  const { data } = await api.get('/auth/status/')
+  return data
+}
+
+export const getMFAStatus = async (): Promise<MFAStatus> => {
+  const { data } = await api.get('/auth/mfa/status/')
+  return data
+}
+
+export const setupMFA = async (): Promise<MFASetupResponse> => {
+  const { data } = await api.post('/auth/mfa/setup/')
+  return data
+}
+
+export const confirmMFA = async (token: string): Promise<MFAVerifyResponse> => {
+  const { data } = await api.post('/auth/mfa/confirm/', { token })
+  return data
+}
+
+export const verifyMFA = async (token: string): Promise<MFAVerifyResponse> => {
+  const { data } = await api.post('/auth/mfa/verify/', { token })
+  return data
+}
+
+export const disableMFA = async (
+  token: string,
+  password: string
+): Promise<MFAVerifyResponse> => {
+  const { data } = await api.post('/auth/mfa/disable/', { token, password })
+  return data
 }
 
 export default api

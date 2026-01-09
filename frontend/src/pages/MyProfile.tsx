@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Camera, Save, X } from 'lucide-react'
-import { getMe, createMeWithAvatar, updateMeWithAvatar } from '@/services/api'
+import { getMe, createMeWithAvatar, updateMeWithAvatar, getMFAStatus } from '@/services/api'
+import MFASetup from '@/components/MFASetup'
 import type { Person } from '@/types'
 
 export function MyProfile() {
@@ -15,6 +16,11 @@ export function MyProfile() {
     queryKey: ['me'],
     queryFn: getMe,
     retry: false,
+  })
+
+  const { data: mfaStatus, refetch: refetchMFA } = useQuery({
+    queryKey: ['mfaStatus'],
+    queryFn: getMFAStatus,
   })
 
   const needsSetup = error && (error as { response?: { status?: number } })?.response?.status === 404
@@ -356,6 +362,15 @@ export function MyProfile() {
         <div className="pt-4 border-t text-sm text-muted-foreground">
           <p>This is your profile in the CRM. When you create relationships, you can link people to yourself.</p>
         </div>
+      </div>
+
+      {/* Security Section */}
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold mb-4">Security</h2>
+        <MFASetup
+          isEnabled={mfaStatus?.mfa_enabled || false}
+          onStatusChange={() => refetchMFA()}
+        />
       </div>
     </div>
   )

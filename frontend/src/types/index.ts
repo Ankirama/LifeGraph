@@ -214,3 +214,37 @@ export interface RelationshipGraphData {
   relationship_types: GraphRelationshipType[]
   center_person_id: string | null
 }
+
+// Auth types
+export interface AuthUser {
+  id: number
+  email: string
+  first_name: string
+  last_name: string
+  is_staff: boolean
+}
+
+export interface AuthStatus {
+  authenticated: boolean
+  user: AuthUser | null
+  mfa_enabled: boolean
+  mfa_verified: boolean
+  mfa_required: boolean
+}
+
+export interface MFAStatus {
+  mfa_enabled: boolean
+  has_totp_device: boolean
+}
+
+export interface MFASetupResponse {
+  secret: string
+  qr_code: string
+  otpauth_url: string
+}
+
+export interface MFAVerifyResponse {
+  detail: string
+  mfa_verified?: boolean
+  mfa_enabled?: boolean
+}
