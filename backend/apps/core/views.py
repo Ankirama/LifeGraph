@@ -79,3 +79,44 @@ class HealthCheckView(APIView):
 
     def get(self, request):
         return Response({"status": "healthy", "service": "lifegraph-api"})
+
+
+class AuthStatusView(APIView):
+    """
+    Get authentication status for the current user.
+
+    Returns user info, MFA status, and whether MFA verification is required.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from .mfa import get_user_totp_device
+
+        if not request.user.is_authenticated:
+            return Response({
+                "authenticated": False,
+                "user": None,
+                "mfa_enabled": False,
+                "mfa_verified": False,
+                "mfa_required": False,
+            })
+
+        user = request.user
+        device = get_user_totp_device(user, confirmed=True)
+        mfa_enabled = device is not None
+        mfa_verified = request.session.get("mfa_verified", False)
+
+        return Response({
+            "authenticated": True,
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "is_staff": user.is_staff,
+            },
+            "mfa_enabled": mfa_enabled,
+            "mfa_verified": mfa_verified,
+            "mfa_required": mfa_enabled and not mfa_verified,
+        })
