@@ -87,6 +87,7 @@ services:
     image: ghcr.io/ankirama/lifegraph-backend:latest
     restart: always
     environment:
+      - DJANGO_SETTINGS_MODULE=lifegraph.settings.production
       - DEBUG=False
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY required}
       - DATABASE_URL=postgresql://lifegraph:${DB_PASSWORD}@db:5432/lifegraph
@@ -133,6 +134,7 @@ services:
     image: ghcr.io/ankirama/lifegraph-backend:latest
     restart: always
     environment:
+      - DJANGO_SETTINGS_MODULE=lifegraph.settings.production
       - DEBUG=False
       - SECRET_KEY=${SECRET_KEY}
       - DATABASE_URL=postgresql://lifegraph:${DB_PASSWORD}@db:5432/lifegraph
@@ -158,6 +160,7 @@ services:
     image: ghcr.io/ankirama/lifegraph-backend:latest
     restart: always
     environment:
+      - DJANGO_SETTINGS_MODULE=lifegraph.settings.production
       - DEBUG=False
       - SECRET_KEY=${SECRET_KEY}
       - DATABASE_URL=postgresql://lifegraph:${DB_PASSWORD}@db:5432/lifegraph

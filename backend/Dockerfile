@@ -5,6 +5,7 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
+ENV DJANGO_SETTINGS_MODULE=lifegraph.settings.production
 
 # Set work directory
 WORKDIR /app
