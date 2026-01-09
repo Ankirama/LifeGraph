@@ -1,4 +1,5 @@
 # Backend Dockerfile for LifeGraph
+# Build: 2026-01-09
 FROM python:3.11-slim
 
 # Set environment variables
